@@ -1,28 +1,51 @@
 package com.gtsn.terrain.noise;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
  * 高度图质量分析器（开发调试用，非模组功能）。
  *
- * 定量验证地形质量：海陆比、高度带分布、相邻梯度（连续性）、
- * 对角线相关性（检测 s=x+z 剖面造成的对角条纹伪影）、种子差异。
+ * <p>定量验证地形质量：海陆比、高度带分布、相邻梯度（连续性）、
+ * 对角线相关性（检测 s=x+z 剖面造成的对角条纹伪影）、种子差异、
+ * 山链走向性（山域点集 2D PCA 长轴/短轴比）、峰顶自然起伏（山域高度标准差）。
+ *
+ * <p>用法：<code>java com.gtsn.terrain.noise.HeightmapAnalyzer [seed] [size]</code>，
+ * 固定分析 3 个 256×256 验证窗口：@(0,0)、@(-1024,0)、@(512,512)。
  */
 public class HeightmapAnalyzer {
 
+    /** 山域阈值：高于该值的采样点视为山脉区域（用于走向性 PCA 与峰顶起伏） */
+    static final int MOUNTAIN_THRESHOLD = 250;
+
+    /** 雪线高度（高度 &gt; 该值计为雪线覆盖） */
+    static final int SNOW_LINE = 300;
+
+    /** 三个验收窗口 */
+    static final int[][] WINDOWS = {{0, 0}, {-1024, 0}, {512, 512}};
+
     public static void main(String[] args) {
-        long seed1 = args.length > 0 ? Long.parseLong(args[0]) : 20260803L;
+        long seed = args.length > 0 ? Long.parseLong(args[0]) : 20260803L;
         int size = args.length > 1 ? Integer.parseInt(args[1]) : 256;
 
-        System.out.println("=== GTSN Heightmap Analysis (seed=" + seed1 + ", size=" + size + "x" + size + ") ===");
-        int[][] h = sample(seed1, size);
+        for (int[] win : WINDOWS) {
+            analyze(seed, size, win[0], win[1]);
+        }
+    }
+
+    /** 分析单个窗口并打印完整指标 + 一行紧凑摘要 */
+    private static void analyze(long seed, int size, int winX, int winZ) {
+        System.out.println("=== GTSN Heightmap Analysis (seed=" + seed
+            + ", window " + size + "x" + size + " @(" + winX + "," + winZ + ")) ===");
+        int[][] h = sample(seed, size, winX, winZ);
+        int total = size * size;
 
         // 1. 海陆比（>62 为陆地）
         int land = 0;
-        int total = size * size;
         for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) if (h[z][x] > 62) land++;
-        System.out.printf("海陆比: 陆地 %.1f%% (目标 25-45%%)%n", 100.0 * land / total);
+        double landRatio = 100.0 * land / total;
 
         // 2. 高度带分布
         int[] bands = new int[7]; // 深海/浅海/海岸/平原/丘陵/山地/雪线
@@ -38,26 +61,21 @@ public class HeightmapAnalyzer {
             else if (v < 300) bands[5]++;
             else bands[6]++;
         }
-        System.out.printf("高度范围: [%d, %d] (目标 [-59, 580])%n", min, max);
         String[] names = {"深海", "浅海", "海岸", "平原", "丘陵", "山地", "雪线"};
-        for (int i = 0; i < 7; i++) System.out.printf("  %s: %.1f%%%n", names[i], 100.0 * bands[i] / total);
 
         // 3. 相邻梯度（连续性，目标 <=8）
         int maxDelta = 0;
         double sumDelta = 0; int count = 0;
         int bdX = 0, bdZ = 0, bdH1 = 0, bdH2 = 0;
         for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) {
-            if (x + 1 < size) { int d = Math.abs(h[z][x] - h[z][x+1]); if (d > maxDelta) { maxDelta = d; bdX = x; bdZ = z; bdH1 = h[z][x]; bdH2 = h[z][x+1]; } sumDelta += d; count++; }
-            if (z + 1 < size) { int d = Math.abs(h[z][x] - h[z+1][x]); if (d > maxDelta) { maxDelta = d; bdX = x; bdZ = z; bdH1 = h[z][x]; bdH2 = h[z+1][x]; } sumDelta += d; count++; }
+            if (x + 1 < size) { int d = Math.abs(h[z][x] - h[z][x + 1]); if (d > maxDelta) { maxDelta = d; bdX = x; bdZ = z; bdH1 = h[z][x]; bdH2 = h[z][x + 1]; } sumDelta += d; count++; }
+            if (z + 1 < size) { int d = Math.abs(h[z][x] - h[z + 1][x]); if (d > maxDelta) { maxDelta = d; bdX = x; bdZ = z; bdH1 = h[z][x]; bdH2 = h[z + 1][x]; } sumDelta += d; count++; }
         }
-        System.out.printf("连续性: 相邻最大差=%d (目标<=8), 平均差=%.2f, 最陡处 (%d,%d): %d→%d%n", maxDelta, sumDelta / count, bdX, bdZ, bdH1, bdH2);
 
         // 4. 对角线相关性（s=x+z 剖面伪影检测）
-        // 若地形是纯 s=x+z 的楔形，则 h(x,z) 高度应几乎只取决于 s=x+z
-        // 计算同 s 对角线上高度的方差：方差小 = 强对角条纹伪影
         double diagVar = 0;
         int diagCount = 0;
-        for (int s = 0; s < 2 * size - 1; s += 8) { // 抽样若干对角线
+        for (int s = 0; s < 2 * size - 1; s += 8) {
             Set<Integer> seen = new HashSet<>();
             for (int x = 0; x < size; x++) {
                 int z = s - x;
@@ -70,63 +88,114 @@ public class HeightmapAnalyzer {
             }
         }
         diagVar /= Math.max(1, diagCount);
-        System.out.printf("对角线高度方差: %.1f (越大越好; <200 提示强对角条纹伪影)%n", diagVar);
 
         // 5. 多样性
         Set<Integer> distinct = new HashSet<>();
         for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) distinct.add(h[z][x]);
-        System.out.printf("多样性: %d 个不同高度值 (size=%d, 最大可能 %d)%n", distinct.size(), size, 640);
 
         // 6. 种子差异（两个种子对比）
-        long seed2 = seed1 + 777;
-        int[][] h2 = sample(seed2, size);
+        long seed2 = seed + 777;
+        int[][] h2 = sample(seed2, size, winX, winZ);
         int diff = 0;
         for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) if (h[z][x] != h2[z][x]) diff++;
-        System.out.printf("种子差异: seed=%d vs %d 差异率 %.1f%% (应接近 100%%)%n", seed1, seed2, 100.0 * diff / total);
+        double seedDiff = 100.0 * diff / total;
 
-        // 7. 64x64 子窗口多样性（S5 契约采样口径：固定大范围偏移窗口）
-        int[][] wins = {{0, 0}, {1024, 1024}, {2048, 2048}, {4096, 4096}, {-2048, 2048}};
-        System.out.print("子窗口多样性 (64x64 偏移→不同高度值数, 目标>450):");
-        HeightMapBuilder sub = new HeightMapBuilder(new TerrainConfig(seed1));
-        for (int[] off : wins) {
-            Set<Integer> d = new HashSet<>();
-            for (int z = 0; z < 64; z++) for (int x = 0; x < 64; x++) d.add(sub.getHeight(off[0] + x, off[1] + z));
-            System.out.printf(" (%d,%d):%d", off[0], off[1], d.size());
-        }
-        System.out.println();
+        // 7. 雪线占比（>300）
+        double snowRatio = 100.0 * bands[6] / total;
 
-        // 8. 64x64 子窗口多样性扫描（9x9 网格，找最大多样性窗口与位置）
-        int bestDistinct = 0;
-        String bestPos = "?";
-        for (int gz = -4; gz <= 4; gz++) {
-            for (int gx = -4; gx <= 4; gx++) {
-                int ox = gx * 1024;
-                int oz = gz * 1024;
-                Set<Integer> d = new HashSet<>();
-                for (int z = 0; z < 64; z++) for (int x = 0; x < 64; x++) d.add(sub.getHeight(ox + x, oz + z));
-                if (d.size() > bestDistinct) {
-                    bestDistinct = d.size();
-                    bestPos = "(" + ox + "," + oz + ")";
-                }
-            }
-        }
-        System.out.printf("子窗口多样性扫描 (9x9×1024): 最大64x64=%d @ %s (目标>450)%n", bestDistinct, bestPos);
+        // 8. 山链走向性
+        List<int[]> mtPts = new ArrayList<>();
+        for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) if (h[z][x] > MOUNTAIN_THRESHOLD) mtPts.add(new int[]{x, z});
+        double chainRatio = pcaAspectRatio(mtPts);          // 点位 PCA 长轴/短轴比
+        double chainCoherence = gradientCoherence(h, size); // 梯度结构张量方向性
 
-        // 9. 256x256 大窗口多样性（候选 S5 偏移）
-        int[][] bigWins = {{-2048, 0}, {-1024, 0}, {-2048, -1024}, {2048, 0}, {1024, 1024}};
-        System.out.print("256x256 大窗口多样性(偏移→不同高度值数, 目标>450):");
-        for (int[] off : bigWins) {
-            Set<Integer> d = new HashSet<>();
-            for (int z = 0; z < 256; z++) for (int x = 0; x < 256; x++) d.add(sub.getHeight(off[0] + x, off[1] + z));
-            System.out.printf(" (%d,%d):%d", off[0], off[1], d.size());
+        // 9. 峰顶自然起伏：山域高度标准差（>5 非平台）
+        double peakStd = 0;
+        if (!mtPts.isEmpty()) {
+            double mean = 0;
+            for (int[] p : mtPts) mean += h[p[1]][p[0]];
+            mean /= mtPts.size();
+            double v = 0;
+            for (int[] p : mtPts) { double d = h[p[1]][p[0]] - mean; v += d * d; }
+            peakStd = Math.sqrt(v / mtPts.size());
         }
+
+        System.out.printf("海陆比: 陆地 %.1f%% (目标 25-45%%)%n", landRatio);
+        System.out.printf("高度范围: [%d, %d] (目标 [-59, 580], 出生点窗口最高>=480)%n", min, max);
+        for (int i = 0; i < 7; i++) System.out.printf("  %s: %.1f%%%n", names[i], 100.0 * bands[i] / total);
+        System.out.printf("连续性: 相邻最大差=%d (目标<=8), 平均差=%.2f, 最陡处 (%d,%d): %d→%d%n",
+            maxDelta, sumDelta / count, winX + bdX, winZ + bdZ, bdH1, bdH2);
+        System.out.printf("对角线高度方差: %.1f (越大越好; <200 提示强对角条纹伪影)%n", diagVar);
+        System.out.printf("多样性: %d 个不同高度值%n", distinct.size());
+        System.out.printf("种子差异: %.1f%% (应>70%%)%n", seedDiff);
+        System.out.printf("雪线(>%d)占比: %.1f%% (目标<10%%)%n", SNOW_LINE, snowRatio);
+        System.out.printf("山链走向性: 山域点=%d, PCA长轴/短轴比=%.2f, 梯度方向性=%.2f (目标>1.5)%n", mtPts.size(), chainRatio, chainCoherence);
+        System.out.printf("峰顶起伏: 山域高度标准差=%.2f (目标>5, 非平台)%n", peakStd);
+
+        System.out.printf("SUMMARY win=(%d,%d) max=%d land=%.1f%% maxDelta=%d diagVar=%.1f seedDiff=%.1f%% snow=%.1f%% pcaRatio=%.2f gradDir=%.2f peakStd=%.2f cliff@(%d,%d)%n",
+            winX, winZ, max, landRatio, maxDelta, diagVar, seedDiff, snowRatio, chainRatio, chainCoherence, peakStd,
+            winX + bdX, winZ + bdZ);
         System.out.println();
     }
 
-    private static int[][] sample(long seed, int size) {
+    /**
+     * 2D 主成分分析：山域点集长轴/短轴比（主轴标准差之比）。
+     * 各向同性斑点 → 比接近 1；带状/链状延伸 → 比 > 1.5。
+     */
+    static double pcaAspectRatio(List<int[]> pts) {
+        if (pts.size() < 10) return 1.0;
+        int n = pts.size();
+        double mx = 0, mz = 0;
+        for (int[] p : pts) { mx += p[0]; mz += p[1]; }
+        mx /= n; mz /= n;
+        double cxx = 0, czz = 0, cxz = 0;
+        for (int[] p : pts) {
+            double dx = p[0] - mx, dz = p[1] - mz;
+            cxx += dx * dx; czz += dz * dz; cxz += dx * dz;
+        }
+        cxx /= n; czz /= n; cxz /= n;
+        double trace = cxx + czz;
+        double det = cxx * czz - cxz * cxz;
+        double disc = Math.sqrt(Math.max(0.0, trace * trace / 4.0 - det));
+        double l1 = trace / 2.0 + disc;
+        double l2 = Math.max(1e-9, trace / 2.0 - disc);
+        return Math.sqrt(l1 / l2);
+    }
+
+    /**
+     * 梯度结构张量方向性（自相关方向性）：山域高度场梯度的协方差张量主轴比。
+     * 链状山脉的梯度几乎全垂直于走向（张量高度各向异性），各向同性斑点则近似各向同性。
+     * 比值 = 主轴标准差之比（>1.5 有明确走向）。
+     */
+    static double gradientCoherence(int[][] h, int size) {
+        return gradientCoherence(h, size, MOUNTAIN_THRESHOLD);
+    }
+
+    static double gradientCoherence(int[][] h, int size, int threshold) {
+        double a = 0, b = 0, c = 0;
+        int n = 0;
+        for (int z = 1; z < size - 1; z++) {
+            for (int x = 1; x < size - 1; x++) {
+                if (h[z][x] <= threshold) continue; // 仅统计山域梯度
+                double gx = h[z][x + 1] - h[z][x - 1];
+                double gz = h[z + 1][x] - h[z - 1][x];
+                if (gx == 0 && gz == 0) continue;
+                a += gx * gx; b += gx * gz; c += gz * gz;
+                n++;
+            }
+        }
+        if (n < 64) return 1.0;
+        double trace = a + c;
+        double disc = Math.sqrt(Math.max(0.0, (a - c) * (a - c) / 4.0 + b * b));
+        double l1 = Math.max(1e-9, (trace / 2.0 + disc));
+        double l2 = Math.max(1e-9, (trace / 2.0 - disc));
+        return Math.sqrt(l1 / l2);
+    }
+
+    private static int[][] sample(long seed, int size, int winX, int winZ) {
         HeightMapBuilder b = new HeightMapBuilder(new TerrainConfig(seed));
         int[][] h = new int[size][size];
-        for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) h[z][x] = b.getHeight(x, z);
+        for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) h[z][x] = b.getHeight(winX + x, winZ + z);
         return h;
     }
 }

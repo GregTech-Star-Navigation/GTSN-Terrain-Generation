@@ -14,13 +14,30 @@ package com.gtsn.terrain.noise;
  * <p>高度合成公式：
  * <pre>
  * oceanY = 62 - 121·smoothstep(-c/0.4) + 细节×半振幅   (c ≤ 0，钳制 [-59, 62])
- * landY  = 62 + c·大陆海拔增益 + smoothstep(ridge01)·山体增益·内陆因子 + 细节 - 河流下挖
- * height = c ≤ 0 ? clamp(oceanY, -59, 62) : clamp(landY, 62, 580)
+ * landY  = 62 + c·大陆海拔增益
+ *          + 山链骨架层 + 尖峰细节层 + 细节 - 河流下挖   (c &gt; 0，钳制 [62, 580])
  * </pre>
  * 海岸线过渡：内陆因子在 c=0 处值为 0 且导数为 0（smoothstep 端点性质），海岸无山；
  * 海陆两侧在 c=0 处同汇海平面 62，天然连续无悬崖。
- * 山脊用 smoothstep(ridge01) 而非 pow 锐化：smoothstep 在 ridge01=0/1 处导数为 0，
- * 杀死 Ridged 噪声 V 型山脊线的陡峭尖点（连续性 <=8 的关键）。
+ *
+ * <p>M5 山链系统（替换 M4 的单层 smoothstep(ridge01) 平台山），三尺度分离保证
+ * 「峰顶尖 + 连续<=8 + 高度480」可兼得（各层独立坡度预算）：
+ * <ul>
+ *   <li>走向角度场：低频 OpenSimplex2（chainAngleFrequency）给出每处山脉走向角 θ∈[0,π)，
+ *       链随位置缓慢转向，天然弯曲；山体层与链脊层共用。</li>
+ *   <li>山体层：平滑 FBm 经域扭曲 + 旋转到走向角 + 各向异性采样（沿向低频率、垂向高频率）
+ *       → 带状山体带；大增益（massifGain）提供大尺度山体质量，平滑噪声梯度平缓，
+ *       连续性预算安全。</li>
+ *   <li>链脊层：低频 Ridged 同样各向异性采样，V 型尖脊（Ridged 在 |n|=0 处为尖点）
+ *       骑在山体带上，中等增益（chainGain）。</li>
+ *   <li>尖峰细节层：中频 Ridged，小增益（ridgeGain），叠加出山峰/垭口的尖峰形态。</li>
+ *   <li>三层均用 pow(·, p&gt;1) 曲线：峰顶尖、山脚缓（mask=1 处导数非零，保留 V 型尖点；
+ *       M4 的 smoothstep 在该处导数为 0，把峰顶磨成平台）。</li>
+ *   <li>山链与大陆度耦合：门控用线性斜坡 min(1, c/inlandRamp=0.65)（海岸无山、内陆起山）。
+ *       M4 的 smoothstep 门控在过渡带相对导数 ~4.3/单位 c，乘上山体增益即 4-5 格/格坡度
+ *       （origin maxDelta 10 的根因）；线性斜坡坡度恒为 1/ramp，比 smoothstep 低 ~3 倍，
+ *       连续预算释放后 origin 高度可达 480+ 且相邻差 ≤8。origin c_max≈0.59 时门控 0.91。</li>
+ * </ul>
  *
  * <p>海陆判定 {@link #isLand(int, int)} = 大陆度 c &gt; 0，大陆度采样
  * {@link #continentalness(int, int)} = c（clamp [-1,1]）——与
@@ -38,6 +55,12 @@ public class HeightMapBuilder {
 
     private final FastNoiseLite ridgeNoise;
 
+    private final FastNoiseLite chainAngleNoise;
+    private final FastNoiseLite massifNoise;
+    private final FastNoiseLite massifWarp;
+    private final FastNoiseLite chainSkeletonNoise;
+    private final FastNoiseLite chainWarp;
+
     private final FastNoiseLite detailNoise;
 
     private final FastNoiseLite riverNoise;
@@ -53,6 +76,19 @@ public class HeightMapBuilder {
 
         this.ridgeNoise = noise(s + 3, FastNoiseLite.NoiseType.OpenSimplex2S,
             FastNoiseLite.FractalType.Ridged, config.ridgeFrequency, config.ridgeOctaves, 0.5f);
+
+        this.chainAngleNoise = noise(s + 10, FastNoiseLite.NoiseType.OpenSimplex2,
+            FastNoiseLite.FractalType.None, config.chainAngleFrequency, 1, 0.5f);
+
+        this.massifNoise = noise(s + 13, FastNoiseLite.NoiseType.OpenSimplex2S,
+            FastNoiseLite.FractalType.FBm, config.massifFrequency, config.massifOctaves, 0.5f);
+
+        this.massifWarp = warp(s + 14, config.massifWarpFrequency, config.massifWarpAmplitude);
+
+        this.chainSkeletonNoise = noise(s + 11, FastNoiseLite.NoiseType.OpenSimplex2S,
+            FastNoiseLite.FractalType.Ridged, config.chainFrequency, config.chainOctaves, 0.5f);
+
+        this.chainWarp = warp(s + 12, config.chainWarpFrequency, config.chainWarpAmplitude);
 
         this.detailNoise = noise(s + 5, FastNoiseLite.NoiseType.OpenSimplex2S,
             FastNoiseLite.FractalType.FBm, config.detailFrequency, config.detailOctaves, 0.5f);
@@ -99,8 +135,18 @@ public class HeightMapBuilder {
         // 1. 大陆度层：2D 低频采样（域扭曲后），海陆阈值 0
         float c = continentalnessAt(fx, fz);
 
-        // 2. 山脊层：Ridged 归一化到 [0,1] 后 smoothstep（导数为 0 端点杀死尖点悬崖）
-        float ridgeIntensity = smoothstep01(ridgeAt(fx, fz));
+        // 2. 山体层：山体（平滑大尺度质量）+ 链脊（V 型尖脊）+ 尖峰细节（中尺度尖峰）。
+        //    pow(·, p>1) 曲线：峰顶尖、山脚缓；在 mask=1 处导数非零，保留 V 型尖点（M4 smoothstep 磨平了它）。
+        //    门控用线性斜坡 min(1, c/ramp)（非 smoothstep）：smoothstep 在过渡带相对导数 ~4.3/单位 c，
+        //    乘上山体增益即 4-5 格/格坡度（origin maxDelta 10 的根因）；线性斜坡坡度恒为 1/ramp，
+        //    比 smoothstep 低 ~3 倍，连续预算大幅释放。
+        float inland = inlandGate(c);
+        float massifHeight = config.massifGain
+            * (float) Math.pow(massifMaskAt(fx, fz), config.massifCurvePower) * inland;
+        float chainHeight = config.chainGain
+            * (float) Math.pow(chainMaskAt(fx, fz), config.chainCurvePower) * inland;
+        float ridgeHeight = config.ridgeGain
+            * (float) Math.pow(ridgeAt(fx, fz), config.ridgeCurvePower) * inland;
 
         // 3. 细节层（中小起伏）
         float detail = detailNoise.GetNoise(fx, fz); // ~[-1, 1]
@@ -117,9 +163,8 @@ public class HeightMapBuilder {
         } else {
             // 4. 陆地基础海拔：大陆度越高海拔越高（海岸平原 → 大陆内陆丘陵）
             float base = TerrainConfig.SEA_LEVEL + c * config.continentElevationGain;
-            // 5. 山体调制：只在陆地且偏向内陆（海岸无山，向内陆渐高）
-            float inland = inlandFactor(c);
-            height = base + ridgeIntensity * config.ridgeGain * inland + detail * config.detailAmplitude;
+            // 5. 山体合成：山体 + 链脊 + 尖峰（均已被内陆因子门控，海岸无山）
+            height = base + massifHeight + chainHeight + ridgeHeight + detail * config.detailAmplitude;
 
             // 6. 河网侵蚀：河流噪声低于阈值处平滑下挖（避免悬崖断裂）
             float river = riverNoise.GetNoise(fx, fz);
@@ -174,9 +219,46 @@ public class HeightMapBuilder {
         return Math.max(0f, Math.min(1f, (r + 1f) * 0.5f));
     }
 
-    /** 内陆因子：c ∈ (0, inlandRamp] 从 0 平滑升至 1（smoothstep，c=0 处值为 0 导数为 0） */
-    private float inlandFactor(float c) {
-        return smoothstep01(Math.min(1f, c / config.inlandRamp));
+    /**
+     * 旋转到走向角 θ 后的各向异性采样坐标（θ 由低频角度场给出，链随位置缓慢转向）。
+     *
+     * <p>先对 (fx,fz) 做域扭曲（链自然弯曲），再按走向角旋转到 (沿向, 垂向) 坐标系，
+     * 最后各向异性缩放：沿向×alongScale（低频率 → 链更长）、垂向×crossScale（高频率 → 链更窄）。
+     */
+    private float[] chainSampledCoords(float fx, float fz, FastNoiseLite warp,
+                                       float alongScale, float crossScale) {
+        FastNoiseLite.Vector2 p = new FastNoiseLite.Vector2(fx, fz);
+        warp.DomainWarp(p);
+        float theta = (chainAngleNoise.GetNoise(fx, fz) + 1f) * 0.5f * (float) Math.PI;
+        float cos = (float) Math.cos(theta);
+        float sin = (float) Math.sin(theta);
+        float along = p.x * cos + p.y * sin;
+        float cross = -p.x * sin + p.y * cos;
+        return new float[]{along * alongScale, cross * crossScale};
+    }
+
+    /** 山体层蒙版采样（平滑单八度各向异性带状带，无重缩放避免坡度放大），输出 [0,1] */
+    private float massifMaskAt(float fx, float fz) {
+        float[] c = chainSampledCoords(fx, fz, massifWarp,
+            config.massifAlongScale, config.massifCrossScale);
+        float r = massifNoise.GetNoise(c[0], c[1]);
+        return Math.max(0f, Math.min(1f, (r + 1f) * 0.5f));
+    }
+
+    /**
+     * 链脊蒙版采样（低频 Ridged 各向异性带状链），输出 [0,1]。
+     * Ridged 的脊线为 V 型尖点（|n|=0 处），由链脊曲线 pow&gt;1 保留尖峰形态。
+     */
+    private float chainMaskAt(float fx, float fz) {
+        float[] c = chainSampledCoords(fx, fz, chainWarp,
+            config.chainAlongScale, config.chainCrossScale);
+        float r = chainSkeletonNoise.GetNoise(c[0], c[1]);
+        return Math.max(0f, Math.min(1f, (r + 1f) * 0.5f));
+    }
+
+    /** 内陆门控：线性斜坡 min(1, c/ramp)。坡度恒为 1/ramp（非 smoothstep 的 ~4.3/单位 c 相对导数） */
+    private float inlandGate(float c) {
+        return Math.min(1f, Math.max(0f, c / config.inlandRamp));
     }
 
     private static float smoothstep01(float t) {
