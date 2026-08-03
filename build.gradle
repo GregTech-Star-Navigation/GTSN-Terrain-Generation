@@ -1,0 +1,79 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+}
+
+version = '0.1.0'
+group = 'com.gtsn.terrain'
+archivesBaseName = 'gtsn-terrain'
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+minecraft {
+    mappings channel: 'official', version: '1.20.1'
+
+    runs {
+        client {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods { gtsnterrain { source sourceSets.main } }
+        }
+
+        server {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods { gtsnterrain { source sourceSets.main } }
+        }
+
+        data {
+            workingDirectory project.file('run')
+            args '--mod', 'gtsnterrain', '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
+            mods { gtsnterrain { source sourceSets.main } }
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    maven { url 'https://maven.kikugie.dev/releases' }
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.3.0'
+    implementation fg.deobf("kikugie:dev-mark:1.0.6")
+}
+
+jar {
+    manifest {
+        attributes([
+            'Specification-Title'   : 'gtsn-terrain',
+            'Specification-Vendor'  : 'GTSN',
+            'Specification-Version' : '1',
+            'Implementation-Title'  : 'gtsn-terrain',
+            'Implementation-Version': project.jar.archiveVersion,
+            'Implementation-Vendor' : 'GTSN'
+        ])
+    }
+}
+
+jar.finalizedBy('reobfJar')
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact jar
+        }
+    }
+    repositories {
+        maven { url "file://${project.projectDir}/mcmodsrepo" }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

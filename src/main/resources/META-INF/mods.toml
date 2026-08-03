@@ -1,0 +1,33 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+issueTrackerURL="https://github.com/GregTech-Star-Navigation/GTSN-Terrain-Generation/issues"
+
+[[mods]]
+modId="gtsnterrain"
+version="0.1.0"
+displayName="GTSN-Terrain Generation"
+logoFile="gtsn_terrain.png"
+credits="GTSN Team"
+authors="GTSN"
+description='''
+GTSN-Terrain Generation - 1.20.1 Forge 自定义地形生成 + 气候环境系统模组。
+
+子项目 A：自写 ChunkGenerator（2D 高度图 + 3D 洞穴 + 地球大陆感地形，Y 640）
+子项目 B：气候系统（温度/湿度/气流/紫外线/光照）+ 灾害（龙卷风/沙尘暴/洪水）
+API：Forge 事件总线 + 公开 API 类 + KubeJS 绑定
+'''
+
+[[dependencies.gtsnterrain]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.gtsnterrain]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"

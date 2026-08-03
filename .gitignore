@@ -1,0 +1,25 @@
+# gtsn-terrain
+# Java 17 build output
+run/
+build/
+out/
+.gradle/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# Logs
+*.log
+hs_err_pid*
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local
+mcmodsrepo/
