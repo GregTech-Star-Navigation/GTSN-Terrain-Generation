@@ -5,8 +5,10 @@
       "type": "minecraft:overworld",
       "generator": {
         "type": "gtsnterrain:terrain",
+        "seed": 20260803,
         "biome_source": {
           "type": "gtsnterrain:terrain_biomes",
+          "seed": 20260803,
           "biomes": [
             "minecraft:plains",
             "minecraft:forest",
