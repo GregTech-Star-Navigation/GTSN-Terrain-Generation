@@ -2,7 +2,7 @@
   "type": "minecraft:worldgen",
   "dimensions": {
     "minecraft:overworld": {
-      "type": "minecraft:overworld",
+      "type": "gtsnterrain:gtsn",
       "generator": {
         "type": "gtsnterrain:terrain",
         "seed": 20260803,
