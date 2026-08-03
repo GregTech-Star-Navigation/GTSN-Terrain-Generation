@@ -71,7 +71,7 @@ public class TerrainBiomeSource extends BiomeSource {
     private static final ResourceLocation ID_PLAINS = new ResourceLocation("minecraft", "plains");
     private static final ResourceLocation ID_FOREST = new ResourceLocation("minecraft", "forest");
     private static final ResourceLocation ID_DESERT = new ResourceLocation("minecraft", "desert");
-    private static final ResourceLocation ID_MOUNTAINS = new ResourceLocation("minecraft", "mountains");
+    private static final ResourceLocation ID_MOUNTAINS = new ResourceLocation("minecraft", "windswept_hills");
     private static final ResourceLocation ID_SNOWY_PLAINS = new ResourceLocation("minecraft", "snowy_plains");
     private static final ResourceLocation ID_OCEAN = new ResourceLocation("minecraft", "ocean");
     private static final ResourceLocation ID_DEEP_OCEAN = new ResourceLocation("minecraft", "deep_ocean");

@@ -83,7 +83,7 @@ class TerrainBiomeSourceTest {
                 holder("minecraft:plains", 0.8f, 0.4f),
                 holder("minecraft:forest", 0.7f, 0.8f),
                 holder("minecraft:desert", 2.0f, 0.0f),
-                holder("minecraft:mountains", 0.2f, 0.3f),
+                holder("minecraft:windswept_hills", 0.2f, 0.3f),
                 holder("minecraft:snowy_plains", 0.0f, 0.5f),
                 holder("minecraft:ocean", 0.5f, 0.5f),
                 holder("minecraft:deep_ocean", 0.5f, 0.5f),
