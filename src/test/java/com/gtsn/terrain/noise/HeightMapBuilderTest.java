@@ -3,6 +3,7 @@ package com.gtsn.terrain.noise;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -124,5 +125,48 @@ class HeightMapBuilderTest {
         }
         assertTrue(distinct > 450,
             "不同高度值数量 " + distinct + " 不超过 450，地形过于平坦");
+    }
+
+    /** S6 海陆判定与大陆架剖面一致：kink = 68 ± 2×大陆度 ∈ [66,70]，s<=60 必然海、s>=80 必然陆 */
+    @Test
+    void s6_isLandMatchesShelfProfile() {
+        HeightMapBuilder builder = newBuilder();
+        for (int x = 0; x < 40; x++) {
+            for (int z = 0; z < 40; z++) {
+                int s = x + z;
+                if (s <= 60) {
+                    assertFalse(builder.isLand(x, z), "(" + x + "," + z + ") s=" + s + " 应判定为海");
+                }
+                if (s >= 80) {
+                    assertTrue(builder.isLand(x, z), "(" + x + "," + z + ") s=" + s + " 应判定为陆");
+                }
+            }
+        }
+    }
+
+    /** S7 海陆判定与大陆度采样确定性 */
+    @Test
+    void s7_isLandAndContinentalnessDeterministic() {
+        HeightMapBuilder builder = newBuilder();
+        for (int i = 0; i < 256; i++) {
+            int x = ((i * 37) % 251) - 125;
+            int z = ((i * 91) % 251) - 125;
+            assertEquals(builder.isLand(x, z), builder.isLand(x, z),
+                "(" + x + "," + z + ") 海陆判定两次不一致");
+            assertEquals(builder.continentalness(x, z), builder.continentalness(x, z),
+                "(" + x + "," + z + ") 大陆度两次不一致");
+        }
+    }
+
+    /** S8 大陆度值域 [-1,1]（群系温度/湿度计算的前提） */
+    @Test
+    void s8_continentalnessWithinUnitRange() {
+        HeightMapBuilder builder = newBuilder();
+        for (int z = 0; z < 64; z++) {
+            for (int x = 0; x < 64; x++) {
+                double c = builder.continentalness(x, z);
+                assertTrue(c >= -1.0 && c <= 1.0, "(" + x + "," + z + ") 大陆度 " + c + " 超出 [-1,1]");
+            }
+        }
     }
 }

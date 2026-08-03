@@ -18,6 +18,10 @@ package com.gtsn.terrain.noise;
  * </pre>
  * 陆地判定 = 合成高度 &gt; SEA_LEVEL。
  *
+ * <p>海陆判定 {@link #isLand(int, int)} 与大陆度采样 {@link #continentalness(int, int)}
+ * 共用大陆度层——同一噪声实例、同一 kink 公式（s &lt;= kink 为海），
+ * 保证海陆划分与地形大陆架严格一致。
+ *
  * <p>{@link #getHeight(int, int)} 为纯函数：同一种子同坐标结果恒定，线程安全。</p>
  */
 public class HeightMapBuilder {
@@ -86,11 +90,8 @@ public class HeightMapBuilder {
         float fx = x;
         float fz = z;
 
-        // 1. 大陆度层：海岸线位置（域扭曲后采样）
-        FastNoiseLite.Vector2 continentCoord = new FastNoiseLite.Vector2(fx, fz);
-        continentWarp.DomainWarp(continentCoord);
-        float continent = continentNoise.GetNoise(continentCoord.x, continentCoord.y); // ~[-1, 1]
-        float kink = config.shelfKink + config.shelfWiggleAmplitude * continent;
+        // 1. 大陆度层：海岸线位置（域扭曲后采样，与 isLand/continentalness 同源同公式）
+        float kink = kinkAt(fx, fz);
 
         // 大陆架剖面：s < kink 海洋缓坡，s > kink 陆地陡坡
         float s = fx + fz;
@@ -124,5 +125,46 @@ public class HeightMapBuilder {
         // 钳制到世界范围 [海床, 峰顶]
         height = Math.max(Math.min(height, TerrainConfig.MAX_HEIGHT), TerrainConfig.MIN_LAND_Y);
         return (int) Math.round(height);
+    }
+
+    /**
+     * 海陆判定：大陆架剖面 s = x + z &gt; kink 为陆，s &lt;= kink 为海。
+     * 与 {@link #getHeight(int, int)} 共用同一大陆度噪声实例与同一 kink 公式，
+     * 保证海陆划分与地形大陆架严格一致。
+     *
+     * @param x 世界 X 坐标（方块）
+     * @param z 世界 Z 坐标（方块）
+     * @return true 为陆地，false 为海洋
+     */
+    public boolean isLand(int x, int z) {
+        return (x + z) > kinkAt(x, z);
+    }
+
+    /**
+     * 大陆度值（域扭曲后采样，约 [-1,1]），供群系温度/湿度计算参考。
+     * 与 {@link #getHeight(int, int)} 的大陆度层完全同源。
+     *
+     * @param x 世界 X 坐标（方块）
+     * @param z 世界 Z 坐标（方块）
+     * @return [-1, 1]，-1 深海洋，+1 大陆核心
+     */
+    public double continentalness(int x, int z) {
+        return clampUnit(continentalnessAt(x, z));
+    }
+
+    /** 大陆度层采样（域扭曲后），getHeight / isLand / continentalness 的唯一入口 */
+    private float continentalnessAt(float fx, float fz) {
+        FastNoiseLite.Vector2 coord = new FastNoiseLite.Vector2(fx, fz);
+        continentWarp.DomainWarp(coord);
+        return continentNoise.GetNoise(coord.x, coord.y);
+    }
+
+    /** 海岸线位置 kink（方块），getHeight / isLand 的唯一公式 */
+    private float kinkAt(float fx, float fz) {
+        return config.shelfKink + config.shelfWiggleAmplitude * continentalnessAt(fx, fz);
+    }
+
+    private static double clampUnit(double v) {
+        return Math.max(-1.0, Math.min(1.0, v));
     }
 }
