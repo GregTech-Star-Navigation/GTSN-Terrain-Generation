@@ -64,6 +64,10 @@ class HeightMapBuilderTest {
     /** S9 山域阈值：400（雪线之上）——隔离山链核心区，切掉大陆度基底抬升的高原（见 S9 论证） */
     private static final int CHAIN_THRESHOLD = 400;
 
+    /** M6 现实感指标窗口：三个验收窗口（与 HeightmapAnalyzer 口径一致） */
+    private static final int M6_GRID = 256;
+    private static final int[][] M6_WINDOWS = {{0, 0}, {-1024, 0}, {512, 512}};
+
     private static HeightMapBuilder newBuilder() {
         return new HeightMapBuilder(new TerrainConfig(SEED));
     }
@@ -259,5 +263,154 @@ class HeightMapBuilderTest {
         assertTrue(ratio > 1.5,
             "山链走向性不足: 山域核心区长轴/短轴比 " + String.format("%.2f", ratio)
                 + " <= 1.5，山脉呈各向同性斑点而非带状/链状延伸");
+    }
+
+    /**
+     * S10 高程金字塔分布（M6 现实感指标 a）：低地(62-140) 占陆地 35-60%，高山(>400) 占陆地 <10%。
+     *
+     * <p>分母为陆地格（>62）而非全窗口——自然地形金字塔型：低地为主体、雪线稀薄。
+     * 三验收窗口都验证（任意窗口都可能落在大陆或海洋上，海洋窗口陆地格少，百分比口径自动适应）。
+     */
+    @Test
+    void s10_elevationPyramidDistribution() {
+        HeightMapBuilder builder = newBuilder();
+        for (int[] win : M6_WINDOWS) {
+            int[] heights = sampleGrid(builder, win[0], win[1], M6_GRID);
+            int land = 0, lowland = 0, alpine = 0;
+            for (int h : heights) {
+                if (h > TerrainConfig.SEA_LEVEL) {
+                    land++;
+                    if (h <= 140) lowland++;
+                    if (h > 400) alpine++;
+                }
+            }
+            if (land < 500) continue; // 纯海洋窗口跳过（陆地格不足无统计意义）
+            double lowlandRatio = 100.0 * lowland / land;
+            double alpineRatio = 100.0 * alpine / land;
+            assertTrue(lowlandRatio >= 35 && lowlandRatio <= 60,
+                "窗口 (" + win[0] + "," + win[1] + ") 低地占比 " + String.format("%.1f%%", lowlandRatio)
+                    + " 不在 [35%, 60%]（陆地 " + land + "）");
+            assertTrue(alpineRatio < 10,
+                "窗口 (" + win[0] + "," + win[1] + ") 高山(>400)占比 " + String.format("%.1f%%", alpineRatio)
+                    + " 超过 10%（陆地 " + land + "）");
+        }
+    }
+
+    /**
+     * S11 坡度分布（M6 现实感指标 b）：8 块基线平均坡度 <12°，>30° 陡坡占比 <5%。
+     *
+     * <p>坡度基线取 8 块（同 HeightmapAnalyzer.SLOPE_BASE）：1 块基线在整数高度下
+     * 相邻差 1 就是 45°，无法区分现实坡度；8 块基线对应「地形起伏的平缓尺度」，
+     * avg<12° ⇔ 平均 8 块落差 <1.7 块。全窗口平均（海洋坡度 0 计入，拉低均值——合理，
+     * 因为海洋占窗口大半时现实地形平均坡度本来就低）。
+     */
+    @Test
+    void s11_slopeDistribution() {
+        HeightMapBuilder builder = newBuilder();
+        int base = 8;
+        for (int[] win : M6_WINDOWS) {
+            int[] heights = sampleGrid(builder, win[0], win[1], M6_GRID);
+            double slopeSum = 0;
+            int slopeCount = 0, steep30 = 0;
+            for (int z = base; z < M6_GRID - base; z++) {
+                for (int x = base; x < M6_GRID - base; x++) {
+                    int i = z * M6_GRID + x;
+                    int dx = Math.abs(heights[i + base] - heights[i - base]);
+                    int dz = Math.abs(heights[(z + base) * M6_GRID + x] - heights[(z - base) * M6_GRID + x]);
+                    double deg = Math.toDegrees(Math.atan(Math.max(dx, dz) / (2.0 * base)));
+                    slopeSum += deg;
+                    slopeCount++;
+                    if (deg > 30.0) steep30++;
+                }
+            }
+            double avg = slopeSum / slopeCount;
+            double steepRatio = 100.0 * steep30 / slopeCount;
+            assertTrue(avg < 12.0,
+                "窗口 (" + win[0] + "," + win[1] + ") 平均坡度 " + String.format("%.2f°", avg) + " 超过 12°");
+            assertTrue(steepRatio < 5.0,
+                "窗口 (" + win[0] + "," + win[1] + ") >30° 陡坡占比 " + String.format("%.2f%%", steepRatio) + " 超过 5%");
+        }
+    }
+
+    /**
+     * S12 海岸线复杂度（M6 现实感指标 c）：海岸线长度/窗口边长 > 1.2。
+     *
+     * <p>粗指标：陆地格（>62）中与海格（<=62）相邻的格数 ≈ 海岸线长度，除以窗口边长 256。
+     * 直线海岸（一条边穿过窗口）比值约 1.0；有海湾/半岛的分形海岸比值明显 >1.2。
+     * 三窗口至少两个达标（要求全部达标会让纯海洋/纯大陆窗口无法成立）。
+     */
+    @Test
+    void s12_coastlineComplexity() {
+        HeightMapBuilder builder = newBuilder();
+        int pass = 0;
+        for (int[] win : M6_WINDOWS) {
+            int[] heights = sampleGrid(builder, win[0], win[1], M6_GRID);
+            int coast = 0;
+            for (int z = 0; z < M6_GRID; z++) {
+                for (int x = 0; x < M6_GRID; x++) {
+                    int i = z * M6_GRID + x;
+                    if (heights[i] <= TerrainConfig.SEA_LEVEL) continue;
+                    boolean hasSea = (x > 0 && heights[i - 1] <= TerrainConfig.SEA_LEVEL)
+                        || (x + 1 < M6_GRID && heights[i + 1] <= TerrainConfig.SEA_LEVEL)
+                        || (z > 0 && heights[i - M6_GRID] <= TerrainConfig.SEA_LEVEL)
+                        || (z + 1 < M6_GRID && heights[i + M6_GRID] <= TerrainConfig.SEA_LEVEL);
+                    if (hasSea) coast++;
+                }
+            }
+            double ratio = coast / (double) M6_GRID;
+            if (ratio > 1.2) pass++;
+        }
+        assertTrue(pass >= 2,
+            "海岸线复杂度过低：仅 " + pass + "/3 窗口海岸线长度/边长 > 1.2（需海湾半岛而非直线海岸）");
+    }
+
+    /**
+     * S13 河流连通性（M6 现实感指标 d）：存在从内陆(>300)到海(<=62)连续下降的谷道路径。
+     *
+     * <p>量化：记忆化 DFS 从每个 h>300 的高地格出发，只沿严格下降（或等高）的 4 邻域走；
+     * 若存在路径到达 <=62 的海格且长度 >= 64，则河流连通成立。这验证「低洼连通域从
+     * 高山带延伸到海」——河流系统的粗代理（有连续下坡的谷道，水才能从山流向海）。
+     * 窗口取 origin（既含高地又含海，最具代表性）。
+     */
+    @Test
+    void s13_riverConnectivityHighToSea() {
+        HeightMapBuilder builder = newBuilder();
+        int[] heights = sampleGrid(builder, 0, 0, M6_GRID);
+        assertTrue(hasDescendingPathToSea(heights, M6_GRID),
+            "origin 窗口不存在从内陆(>300)到海(<=62)的连续下降路径——河流系统缺失");
+    }
+
+    /** S13 辅助：记忆化 DFS 是否存在从 h>300 到海(<=62)的下降路径（长度>=64） */
+    private static boolean hasDescendingPathToSea(int[] h, int size) {
+        int n = size * size;
+        Boolean[] memo = new Boolean[n];
+        boolean[] vis = new boolean[n];
+        java.util.List<Integer> starts = new ArrayList<>();
+        for (int i = 0; i < n; i++) {
+            if (h[i] > 300) starts.add(i);
+        }
+        if (starts.isEmpty()) return false;
+        for (int s : starts) {
+            if (dfsSea(s, h, size, memo, vis, 0)) return true;
+        }
+        return false;
+    }
+
+    private static boolean dfsSea(int idx, int[] h, int size, Boolean[] memo, boolean[] vis, int depth) {
+        if (depth > 4096) return false;
+        int x = idx % size, z = idx / size;
+        if (h[idx] <= 62 && depth >= 64) return true;
+        if (memo[idx] != null) return memo[idx];
+        vis[idx] = true;
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] d : dirs) {
+            int nx = x + d[0], nz = z + d[1];
+            if (nx < 0 || nx >= size || nz < 0 || nz >= size) continue;
+            int ni = nz * size + nx;
+            if (vis[ni] || h[ni] > h[idx] + 0) continue; // 只走下降或等高
+            if (dfsSea(ni, h, size, memo, vis, depth + 1)) { memo[idx] = true; return true; }
+        }
+        memo[idx] = false;
+        return false;
     }
 }

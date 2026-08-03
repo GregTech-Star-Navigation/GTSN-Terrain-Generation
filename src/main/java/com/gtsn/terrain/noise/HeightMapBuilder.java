@@ -48,6 +48,14 @@ package com.gtsn.terrain.noise;
  */
 public class HeightMapBuilder {
 
+    /**
+     * raw 高度纯函数接口（M6：侵蚀前的高度采样，供 {@link HeightCache} 在区块粒度调用）。
+     * 同种子同坐标必然恒定（纯函数），是跨区块一致性的根基。
+     */
+    public interface RawHeight {
+        float rawHeight(int x, int z);
+    }
+
     private final TerrainConfig config;
 
     private final FastNoiseLite continentNoise;

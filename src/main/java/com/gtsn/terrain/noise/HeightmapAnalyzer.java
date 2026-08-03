@@ -23,6 +23,20 @@ public class HeightmapAnalyzer {
     /** 雪线高度（高度 &gt; 该值计为雪线覆盖） */
     static final int SNOW_LINE = 300;
 
+    /** 坡度测量基线（块）：slope = atan(|h[x+base]-h[x-base]| / 2base)。
+     *  用 8 块基线而非 1 块：整数高度下 1 块相邻差 1 就是 45°，无法区分现实坡度；
+     *  8 块基线 ≈ 现实地形起伏的平缓尺度（avg<12° ⇔ 平均 8 块落差 <1.7 块）。 */
+    static final int SLOPE_BASE = 8;
+
+    /** 河流连通性：高山起点阈值（>300 视为内陆高地） */
+    static final int RIVER_SOURCE = 300;
+
+    /** 河流连通性：海平面判定（<=62 为海） */
+    static final int RIVER_SEA = 62;
+
+    /** 河流连通性：要求单调下降路径的最短长度（块），排除悬崖一步入海 */
+    static final int RIVER_MIN_PATH = 64;
+
     /** 三个验收窗口 */
     static final int[][] WINDOWS = {{0, 0}, {-1024, 0}, {512, 512}};
 
@@ -120,6 +134,43 @@ public class HeightmapAnalyzer {
             peakStd = Math.sqrt(v / mtPts.size());
         }
 
+        // 10. 高程金字塔分布（M6 现实感指标 a）：低地(62-140) 占比 35-60%，高山(>400) 占比 <10%
+        int lowland = 0, alpine = 0;
+        for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) {
+            int v = h[z][x];
+            if (v > 62 && v <= 140) lowland++;
+            if (v > 400) alpine++;
+        }
+        double lowlandRatio = 100.0 * lowland / total;
+        double alpineRatio = 100.0 * alpine / total;
+
+        // 11. 坡度分布（M6 现实感指标 b）：8 块基线平均坡度 <12°，>30° 陡坡 <5%
+        double slopeSum = 0; int slopeCount = 0;
+        int steep30 = 0;
+        for (int z = SLOPE_BASE; z < size - SLOPE_BASE; z++) for (int x = SLOPE_BASE; x < size - SLOPE_BASE; x++) {
+            int dx = Math.abs(h[z][x + SLOPE_BASE] - h[z][x - SLOPE_BASE]);
+            int dz = Math.abs(h[z + SLOPE_BASE][x] - h[z - SLOPE_BASE][x]);
+            double grad = Math.max(dx, dz) / (2.0 * SLOPE_BASE);
+            double deg = Math.toDegrees(Math.atan(grad));
+            slopeSum += deg; slopeCount++;
+            if (deg > 30.0) steep30++;
+        }
+        double avgSlope = slopeSum / Math.max(1, slopeCount);
+        double steepRatio = 100.0 * steep30 / Math.max(1, slopeCount);
+
+        // 12. 海岸线复杂度（M6 现实感指标 c）：海岸格数/窗口边长
+        int coast = 0;
+        for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) {
+            if (h[z][x] <= 62) continue;
+            boolean hasSea = (x > 0 && h[z][x - 1] <= 62) || (x + 1 < size && h[z][x + 1] <= 62)
+                || (z > 0 && h[z - 1][x] <= 62) || (z + 1 < size && h[z + 1][x] <= 62);
+            if (hasSea) coast++;
+        }
+        double coastRatio = coast / (double) size;
+
+        // 13. 河流连通性（M6 现实感指标 d）：存在从内陆(>300)到海(<=62)连续下降的谷道路径
+        boolean riverOk = hasDescendingPathToSea(h, size);
+
         System.out.printf("海陆比: 陆地 %.1f%% (目标 25-45%%)%n", landRatio);
         System.out.printf("高度范围: [%d, %d] (目标 [-59, 580], 出生点窗口最高>=480)%n", min, max);
         for (int i = 0; i < 7; i++) System.out.printf("  %s: %.1f%%%n", names[i], 100.0 * bands[i] / total);
@@ -131,11 +182,61 @@ public class HeightmapAnalyzer {
         System.out.printf("雪线(>%d)占比: %.1f%% (目标<10%%)%n", SNOW_LINE, snowRatio);
         System.out.printf("山链走向性: 山域点=%d, PCA长轴/短轴比=%.2f, 梯度方向性=%.2f (目标>1.5)%n", mtPts.size(), chainRatio, chainCoherence);
         System.out.printf("峰顶起伏: 山域高度标准差=%.2f (目标>5, 非平台)%n", peakStd);
+        System.out.printf("高程金字塔(M6a): 低地(62-140)=%.1f%% (目标 35-60%%), 高山(>400)=%.1f%% (目标<10%%)%n",
+            lowlandRatio, alpineRatio);
+        System.out.printf("坡度分布(M6b): 平均坡度=%.2f° (目标<12°), >30°陡坡=%.2f%% (目标<5%%)%n",
+            avgSlope, steepRatio);
+        System.out.printf("海岸线复杂度(M6c): 海岸格数=%d, 长度/边长=%.2f%n", coast, coastRatio);
+        System.out.printf("河流连通性(M6d): 高山到海连续下降路径=%s%n", riverOk ? "存在" : "不存在");
 
-        System.out.printf("SUMMARY win=(%d,%d) max=%d land=%.1f%% maxDelta=%d diagVar=%.1f seedDiff=%.1f%% snow=%.1f%% pcaRatio=%.2f gradDir=%.2f peakStd=%.2f cliff@(%d,%d)%n",
+        System.out.printf("SUMMARY win=(%d,%d) max=%d land=%.1f%% maxDelta=%d diagVar=%.1f seedDiff=%.1f%% snow=%.1f%% pcaRatio=%.2f gradDir=%.2f peakStd=%.2f lowland=%.1f%% alpine=%.1f%% avgSlope=%.2f° steep30=%.2f%% coast=%.2f river=%s cliff@(%d,%d)%n",
             winX, winZ, max, landRatio, maxDelta, diagVar, seedDiff, snowRatio, chainRatio, chainCoherence, peakStd,
+            lowlandRatio, alpineRatio, avgSlope, steepRatio, coastRatio, riverOk,
             winX + bdX, winZ + bdZ);
         System.out.println();
+    }
+
+    /**
+     * M6 现实感指标 d：是否存在从内陆(>300)到海(<=62)的连续下降（谷道）路径。
+     *
+     * <p>实现：从每个 h>300 的高地格出发做记忆化 DFS，只沿高度严格下降（或相等）的 4 邻域走；
+     * 若任一高地格能到达 <=62 的海格且路径长度 >= {@link #RIVER_MIN_PATH}，则连通。
+     * 这量化「低洼连通域从高山带延伸到海」——河流存在性的粗代理指标。
+     */
+    static boolean hasDescendingPathToSea(int[][] h, int size) {
+        Boolean[] memo = new Boolean[size * size];
+        boolean[] high = new boolean[size * size];
+        java.util.List<Integer> starts = new ArrayList<>();
+        for (int z = 0; z < size; z++) for (int x = 0; x < size; x++) {
+            int v = h[z][x];
+            if (v > RIVER_SOURCE) { high[z * size + x] = true; starts.add(z * size + x); }
+        }
+        if (starts.isEmpty()) return false;
+        for (int s : starts) {
+            if (dfsRiver(s, h, size, memo, new boolean[size * size], 0)) return true;
+        }
+        return false;
+    }
+
+    /** 记忆化 DFS：从 idx 出发沿下降邻域能否到海，且路径足够长 */
+    private static boolean dfsRiver(int idx, int[][] h, int size, Boolean[] memo, boolean[] vis, int depth) {
+        if (depth > 4096) return false; // 防御：路径爆炸保护
+        int x = idx % size, z = idx / size;
+        int v = h[z][x];
+        if (v <= RIVER_SEA && depth >= RIVER_MIN_PATH) return true;
+        if (memo[idx] != null) return memo[idx];
+        vis[idx] = true;
+        int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+        for (int[] d : dirs) {
+            int nx = x + d[0], nz = z + d[1];
+            if (nx < 0 || nx >= size || nz < 0 || nz >= size) continue;
+            int ni = nz * size + nx;
+            if (vis[ni]) continue;
+            if (h[nz][nx] > v + 0) continue; // 只走下降或等高
+            if (dfsRiver(ni, h, size, memo, vis, depth + 1)) { memo[idx] = true; return true; }
+        }
+        memo[idx] = false;
+        return false;
     }
 
     /**
