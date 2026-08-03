@@ -2,6 +2,9 @@ package com.gtsn.terrain.noise;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,6 +55,14 @@ class HeightMapBuilderTest {
     private static final int D_GRID = 256;
     private static final int DX0 = -1024;
     private static final int DZ0 = 0;
+
+    /** S9 山链走向性窗口：256×256 于 (-1024,0)（高海拔山域覆盖最充分的验证窗口） */
+    private static final int CHAIN_GRID = 256;
+    private static final int CHAIN_X0 = -1024;
+    private static final int CHAIN_Z0 = 0;
+
+    /** S9 山域阈值：400（雪线之上）——隔离山链核心区，切掉大陆度基底抬升的高原（见 S9 论证） */
+    private static final int CHAIN_THRESHOLD = 400;
 
     private static HeightMapBuilder newBuilder() {
         return new HeightMapBuilder(new TerrainConfig(SEED));
@@ -191,5 +202,62 @@ class HeightMapBuilderTest {
                 assertTrue(c >= -1.0 && c <= 1.0, "(" + x + "," + z + ") 大陆度 " + c + " 超出 [-1,1]");
             }
         }
+    }
+
+    /**
+     * S9 山链走向性：山脉核心区（高度 &gt; 400）呈带状/链状延伸而非各向同性斑点。
+     *
+     * <p>指标：对高于阈值的采样点集合做 2D 主成分分析（协方差矩阵特征分解），
+     * 取长轴/短轴比（主轴标准差之比）。链状山脉的核心区狭长（比 &gt; 1.5），
+     * 各向同性斑点（随机土丘）近圆形（比接近 1）。
+     *
+     * <p>窗口与阈值论证（基线实测，M4 斑点评测）：
+     * <ul>
+     *   <li>窗口取 (-1024,0)（高海拔山域覆盖最充分的验证窗口，山域 15k+ 采样点）。</li>
+     *   <li>阈值取 400 而非 250：该窗口大陆度极高，基底海拔本身就把 60%+ 格点抬过 250
+     *       （高原稀释链信号，M4/M5 在 250 处均 <1.5 无法判别）；阈值 400 切掉基底高原，
+     *       只剩山链核心区——M4 斑点实测长轴/短轴比 1.27（RED），M5 山链 1.89（GREEN）。</li>
+     * </ul>
+     *
+     * <p>梯度结构张量（自相关方向性）在该窗口失效：V 型尖峰梯度向心（径向各向同性），
+     * 稀释了链带侧翼的方向性信号（M4 1.22 / M5 1.27~1.42），故契约采用点位 PCA。
+     */
+    @Test
+    void s9_mountainChainsAreDirectional() {
+        HeightMapBuilder builder = newBuilder();
+        int[] heights = sampleGrid(builder, CHAIN_X0, CHAIN_Z0, CHAIN_GRID);
+
+        // 收集山域采样点 (x, z)
+        List<int[]> pts = new ArrayList<>();
+        for (int z = 0; z < CHAIN_GRID; z++) {
+            for (int x = 0; x < CHAIN_GRID; x++) {
+                if (heights[z * CHAIN_GRID + x] > CHAIN_THRESHOLD) {
+                    pts.add(new int[]{x, z});
+                }
+            }
+        }
+        assertTrue(pts.size() >= 200, "山域采样点不足 " + pts.size() + "（窗口内山脉核心区过少，指标无统计意义）");
+
+        // 2D 协方差矩阵 [[cxx, cxz], [cxz, czz]] 特征分解
+        int n = pts.size();
+        double mx = 0, mz = 0;
+        for (int[] p : pts) { mx += p[0]; mz += p[1]; }
+        mx /= n; mz /= n;
+        double cxx = 0, czz = 0, cxz = 0;
+        for (int[] p : pts) {
+            double dx = p[0] - mx, dz = p[1] - mz;
+            cxx += dx * dx; czz += dz * dz; cxz += dx * dz;
+        }
+        cxx /= n; czz /= n; cxz /= n;
+        double trace = cxx + czz;
+        double det = cxx * czz - cxz * cxz;
+        double disc = Math.sqrt(Math.max(0.0, trace * trace / 4.0 - det));
+        double lambda1 = Math.max(1e-9, trace / 2.0 + disc);
+        double lambda2 = Math.max(1e-9, trace / 2.0 - disc);
+        double ratio = Math.sqrt(lambda1 / lambda2);
+
+        assertTrue(ratio > 1.5,
+            "山链走向性不足: 山域核心区长轴/短轴比 " + String.format("%.2f", ratio)
+                + " <= 1.5，山脉呈各向同性斑点而非带状/链状延伸");
     }
 }
