@@ -1,46 +1,87 @@
 plugins {
+    id 'java-library'
     id 'eclipse'
     id 'idea'
     id 'maven-publish'
-    id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    alias forge.plugins.modDevGradle
 }
 
-version = '0.1.0'
-group = 'com.gtsn.terrain'
-archivesBaseName = 'gtsn-terrain'
+group = maven_group
+version = "${mod_version}"
 
-java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
 
-minecraft {
-    mappings channel: 'official', version: '1.20.1'
+sourceSets {
+    main.resources {
+        srcDir 'src/generated/resources'
+    }
+}
+
+legacyForge {
+    // Forge 版本（GTM 同款 47.4.0）
+    version = forge.versions.minecraftForge.get()
+
+    parchment {
+        minecraftVersion = forge.versions.minecraft.get()
+        mappingsVersion = forge.versions.parchment.get()
+    }
+
+    addModdingDependenciesTo(sourceSets.test)
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
 
     runs {
         client {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-            mods { gtsnterrain { source sourceSets.main } }
+            client()
+            ideName = "Client"
+
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
         }
 
         server {
-            workingDirectory project.file('run')
-            property 'forge.logging.markers', 'REGISTRIES'
-            property 'forge.logging.console.level', 'debug'
-            mods { gtsnterrain { source sourceSets.main } }
+            server()
+            ideName = "Server"
+
+            gameDirectory.set(file('run/server'))
+            programArgument '--nogui'
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
         }
 
         data {
-            workingDirectory project.file('run')
-            args '--mod', 'gtsnterrain', '--all', '--output', file('src/generated/resources/'), '--existing', file('src/main/resources/')
-            mods { gtsnterrain { source sourceSets.main } }
+            data()
+            ideName = "Data Generation"
+
+            gameDirectory.set(file('run/data'))
+            programArguments.addAll('--mod', project.mod_id)
+            programArguments.addAll('--all')
+            programArguments.addAll('--output', file('src/generated/resources/').getAbsolutePath())
+            programArguments.addAll('--existing', file('src/main/resources/').getAbsolutePath())
+        }
+
+        gameTestServer {
+            type = "gameTestServer"
+            ideName = "Game Tests"
+
+            systemProperty 'forge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        configureEach {
+            systemProperty 'forge.logging.markers', 'REGISTRIES'
+            logLevel = org.slf4j.event.Level.INFO
         }
     }
 }
 
-sourceSets.main.resources { srcDir 'src/generated/resources' }
-
-dependencies {
-    minecraft 'net.minecraftforge:forge:1.20.1-47.3.0'
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = "UTF-8"
+    options.compilerArgs << "-Xlint:-removal"
 }
 
 jar {
@@ -56,8 +97,6 @@ jar {
     }
 }
 
-jar.finalizedBy('reobfJar')
-
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -67,8 +106,4 @@ publishing {
     repositories {
         maven { url "file://${project.projectDir}/mcmodsrepo" }
     }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    options.encoding = 'UTF-8'
 }
