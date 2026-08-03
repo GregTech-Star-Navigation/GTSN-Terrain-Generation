@@ -39,13 +39,8 @@ minecraft {
 
 sourceSets.main.resources { srcDir 'src/generated/resources' }
 
-repositories {
-    maven { url 'https://maven.kikugie.dev/releases' }
-}
-
 dependencies {
     minecraft 'net.minecraftforge:forge:1.20.1-47.3.0'
-    implementation fg.deobf("kikugie:dev-mark:1.0.6")
 }
 
 jar {

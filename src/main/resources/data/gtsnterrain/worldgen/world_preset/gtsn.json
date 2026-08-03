@@ -1,0 +1,47 @@
+{
+  "type": "minecraft:worldgen",
+  "dimensions": {
+    "minecraft:overworld": {
+      "type": "minecraft:overworld",
+      "generator": {
+        "type": "gtsnterrain:terrain",
+        "biome_source": {
+          "type": "gtsnterrain:terrain_biomes",
+          "biomes": [
+            "minecraft:plains",
+            "minecraft:forest",
+            "minecraft:desert",
+            "minecraft:mountains",
+            "minecraft:snowy_plains",
+            "minecraft:ocean",
+            "minecraft:deep_ocean",
+            "minecraft:swamp",
+            "minecraft:taiga",
+            "minecraft:jungle"
+          ]
+        }
+      }
+    },
+    "minecraft:the_nether": {
+      "type": "minecraft:the_nether",
+      "generator": {
+        "type": "minecraft:noise",
+        "biome_source": {
+          "type": "minecraft:multi_noise",
+          "preset": "minecraft:nether"
+        },
+        "settings": "minecraft:nether"
+      }
+    },
+    "minecraft:the_end": {
+      "type": "minecraft:the_end",
+      "generator": {
+        "type": "minecraft:noise",
+        "biome_source": {
+          "type": "minecraft:the_end"
+        },
+        "settings": "minecraft:end"
+      }
+    }
+  }
+}
