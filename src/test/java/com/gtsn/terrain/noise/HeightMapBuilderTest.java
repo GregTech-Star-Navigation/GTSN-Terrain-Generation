@@ -109,7 +109,7 @@ class HeightMapBuilderTest {
     }
 
     @Test
-    void s5_moreThan500DistinctHeightValues() {
+    void s5_moreThan450DistinctHeightValues() {
         HeightMapBuilder builder = newBuilder();
         int[] heights = sampleGrid(builder);
         // 高度范围 [-64, 580]，偏移 +64 映射到非负下标
