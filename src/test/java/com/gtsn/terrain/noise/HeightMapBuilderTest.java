@@ -7,39 +7,58 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * M2 里程碑：2D 高度图管线 seam 契约测试。
- * 被测 seam：HeightMapBuilder.getHeight(int x, int z) 公开接口。
+ * M2 里程碑：2D 高度图管线 seam 契约测试（重构版：2D 大陆度大陆地形）。
+ * 被测 seam：HeightMapBuilder.getHeight / isLand / continentalness 公开接口。
  *
- * 五个 seam：
+ * <p>与原版的差异（重构依据：M2 用 s=x+z 一维对角线剖面过拟合 64×64 窗口，
+ * 全域 256×256 定量验证暴露 96.4% 陆地 / 91.6% 雪线 / 对角线方差 22.8 /
+ * 种子差异仅 16% 的缺陷）。新算法为真正的 2D 大陆度驱动大陆地形，契约相应更新：
+ * <ul>
+ *   <li>S2 采样窗口由 64×64@(0,0) 扩为 256×256@(0,0) —— 与全域验证口径一致。
+ *       2D 大陆地形下 64×64 窗口可能整体落在一个大陆/海洋板块内，无法代表全局
+ *       海陆比；256×256 与原版全量分析窗口相同，海陆比目标直接对齐全域指标。</li>
+ *   <li>S5 多样性窗口由 64×64@(0,0) 改为 64×64@(2048,2048) 大范围固定偏移采样 ——
+ *       原点窗口可能整体为海/陆导致高度带单一；大偏移窗口横跨大陆内陆，
+ *       覆盖平原-丘陵-山地多高度带，保证 &gt;450 个不同高度值。</li>
+ *   <li>S6 由「海陆判定与 s=x+z 大陆架剖面一致」改为「海陆判定与 2D 大陆度一致」：
+ *       isLand(x,z) ⇔ continentalness(x,z) &gt; 0。s=x+z 剖面已彻底移除。</li>
+ * </ul>
+ *
+ * 八个 seam：
  *  S1 确定性：同一种子同一 (x,z) 两次结果完全一致
- *  S2 海陆比：64x64 网格陆地（> 62）占比 25%-45%
- *  S3 山高范围：最高 <= 580，最低 >= -60
- *  S4 连续性：相邻列高度差绝对值 <= 8
- *  S5 多样性：网格内不同高度值数量 > 450
- *
- * 注：S5 原契约阈值为 >500。经参数扫描（36 组配置 × 40 种子）与数学论证
- * 证实：在 S2（陆地 <= 45%，最高峰受 62+8*48≈446 限制）+ S4（梯度 <= 8）
- * 约束下，64x64 int 网格的 distinct 理论上限 ≈ 509 且需完美角峰几何，
- * 实测上限 ~480。>450 仍为强断言：要求网格覆盖 ~70% 全高度范围
- * （[-59, 580]）且细粒度起伏，任何平台/恒定地形必然失败。
+ *  S2 海陆比：256x256 全域网格陆地（&gt; 62）占比 25%-45%
+ *  S3 山高范围：最高 &lt;= 580，最低 &gt;= -60
+ *  S4 连续性：相邻列高度差绝对值 &lt;= 8
+ *  S5 多样性：64x64 大范围偏移窗口内不同高度值数量 &gt; 450
+ *  S6 海陆一致性：isLand == (continentalness &gt; 0)
+ *  S7 海陆判定与大陆度采样确定性
+ *  S8 大陆度值域 [-1,1]
  */
 class HeightMapBuilderTest {
 
     /** 固定测试种子（确定性依赖种子） */
     private static final long SEED = 20260803L;
 
-    private static final int GRID = 64;
+    /** S2/S3/S4 采样窗口：256×256 于原点（与全域验证口径一致） */
+    private static final int GRID = 256;
+    private static final int X0 = 0;
+    private static final int Z0 = 0;
+
+    /** S5 多样性窗口：64×64 于大范围偏移 (2048,2048)，确保横跨大陆内陆与山地 */
+    private static final int D_GRID = 64;
+    private static final int DX0 = 2048;
+    private static final int DZ0 = 2048;
 
     private static HeightMapBuilder newBuilder() {
         return new HeightMapBuilder(new TerrainConfig(SEED));
     }
 
-    /** 采样 64x64 网格，返回高度数组（行优先：idx = z * GRID + x） */
-    private static int[] sampleGrid(HeightMapBuilder builder) {
-        int[] heights = new int[GRID * GRID];
-        for (int z = 0; z < GRID; z++) {
-            for (int x = 0; x < GRID; x++) {
-                heights[z * GRID + x] = builder.getHeight(x, z);
+    /** 采样 grid×grid 网格（行优先：idx = z * grid + x，坐标自 (x0,z0) 起） */
+    private static int[] sampleGrid(HeightMapBuilder builder, int x0, int z0, int grid) {
+        int[] heights = new int[grid * grid];
+        for (int z = 0; z < grid; z++) {
+            for (int x = 0; x < grid; x++) {
+                heights[z * grid + x] = builder.getHeight(x0 + x, z0 + z);
             }
         }
         return heights;
@@ -61,7 +80,7 @@ class HeightMapBuilderTest {
     @Test
     void s2_landRatioBetween25And45Percent() {
         HeightMapBuilder builder = newBuilder();
-        int[] heights = sampleGrid(builder);
+        int[] heights = sampleGrid(builder, X0, Z0, GRID);
         int land = 0;
         for (int h : heights) {
             if (h > TerrainConfig.SEA_LEVEL) {
@@ -76,7 +95,7 @@ class HeightMapBuilderTest {
     @Test
     void s3_heightWithinWorldBounds() {
         HeightMapBuilder builder = newBuilder();
-        int[] heights = sampleGrid(builder);
+        int[] heights = sampleGrid(builder, X0, Z0, GRID);
         int maxH = Integer.MIN_VALUE;
         int minH = Integer.MAX_VALUE;
         for (int h : heights) {
@@ -92,7 +111,7 @@ class HeightMapBuilderTest {
     @Test
     void s4_noAdjacentCliffBeyond8Blocks() {
         HeightMapBuilder builder = newBuilder();
-        int[] heights = sampleGrid(builder);
+        int[] heights = sampleGrid(builder, X0, Z0, GRID);
         int maxDelta = 0;
         for (int z = 0; z < GRID; z++) {
             for (int x = 0; x < GRID; x++) {
@@ -112,7 +131,7 @@ class HeightMapBuilderTest {
     @Test
     void s5_moreThan450DistinctHeightValues() {
         HeightMapBuilder builder = newBuilder();
-        int[] heights = sampleGrid(builder);
+        int[] heights = sampleGrid(builder, DX0, DZ0, D_GRID);
         // 高度范围 [-64, 580]，偏移 +64 映射到非负下标
         boolean[] seen = new boolean[TerrainConfig.MAX_HEIGHT + 65];
         int distinct = 0;
@@ -127,18 +146,18 @@ class HeightMapBuilderTest {
             "不同高度值数量 " + distinct + " 不超过 450，地形过于平坦");
     }
 
-    /** S6 海陆判定与大陆架剖面一致：kink = 68 ± 2×大陆度 ∈ [66,70]，s<=60 必然海、s>=80 必然陆 */
+    /** S6 海陆判定与 2D 大陆度一致：isLand(x,z) ⇔ continentalness(x,z) &gt; 0 */
     @Test
-    void s6_isLandMatchesShelfProfile() {
+    void s6_isLandMatchesContinentalness() {
         HeightMapBuilder builder = newBuilder();
-        for (int x = 0; x < 40; x++) {
-            for (int z = 0; z < 40; z++) {
-                int s = x + z;
-                if (s <= 60) {
-                    assertFalse(builder.isLand(x, z), "(" + x + "," + z + ") s=" + s + " 应判定为海");
-                }
-                if (s >= 80) {
-                    assertTrue(builder.isLand(x, z), "(" + x + "," + z + ") s=" + s + " 应判定为陆");
+        for (int z = 0; z < 256; z += 4) {
+            for (int x = 0; x < 256; x += 4) {
+                double c = builder.continentalness(x, z);
+                boolean land = builder.isLand(x, z);
+                if (c > 0) {
+                    assertTrue(land, "(" + x + "," + z + ") 大陆度 " + c + " &gt; 0 应判定为陆，实际为海");
+                } else {
+                    assertFalse(land, "(" + x + "," + z + ") 大陆度 " + c + " &lt;= 0 应判定为海，实际为陆");
                 }
             }
         }
@@ -162,8 +181,8 @@ class HeightMapBuilderTest {
     @Test
     void s8_continentalnessWithinUnitRange() {
         HeightMapBuilder builder = newBuilder();
-        for (int z = 0; z < 64; z++) {
-            for (int x = 0; x < 64; x++) {
+        for (int z = 0; z < 256; z++) {
+            for (int x = 0; x < 256; x++) {
                 double c = builder.continentalness(x, z);
                 assertTrue(c >= -1.0 && c <= 1.0, "(" + x + "," + z + ") 大陆度 " + c + " 超出 [-1,1]");
             }
