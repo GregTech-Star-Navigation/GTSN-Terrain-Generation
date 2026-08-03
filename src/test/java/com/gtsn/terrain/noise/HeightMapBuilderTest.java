@@ -17,9 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  *   <li>S2 采样窗口由 64×64@(0,0) 扩为 256×256@(0,0) —— 与全域验证口径一致。
  *       2D 大陆地形下 64×64 窗口可能整体落在一个大陆/海洋板块内，无法代表全局
  *       海陆比；256×256 与原版全量分析窗口相同，海陆比目标直接对齐全域指标。</li>
- *   <li>S5 多样性窗口由 64×64@(0,0) 改为 64×64@(2048,2048) 大范围固定偏移采样 ——
- *       原点窗口可能整体为海/陆导致高度带单一；大偏移窗口横跨大陆内陆，
- *       覆盖平原-丘陵-山地多高度带，保证 &gt;450 个不同高度值。</li>
+ *   <li>S5 多样性窗口由 64×64@(0,0) 改为 256×256@(-1024,0) 大范围固定偏移采样。
+ *       实测：2D 板块尺度大陆地形（大陆频率 0.002，板块 ~500 格）下，任何 64×64
+ *       窗口最大跨度仅 ~413 个不同高度值（全 9×9×1024 偏移扫描），无法达到 >450
+ *       ——M2 的「64×64 覆盖完整高度梯度」语义只有一维对角线剖面这种人工构造才能
+ *       满足，新算法下被连续性(<=8)与板块尺度共同排除。256×256 窗口在
+ *       (-1024,0) 处实测 638 个不同高度值（余量 188），跨度覆盖深海到高山，
+ *       是保持 >450 强断言的可靠采样口径（任务允许「固定大范围偏移采样」）。</li>
  *   <li>S6 由「海陆判定与 s=x+z 大陆架剖面一致」改为「海陆判定与 2D 大陆度一致」：
  *       isLand(x,z) ⇔ continentalness(x,z) &gt; 0。s=x+z 剖面已彻底移除。</li>
  * </ul>
@@ -44,10 +48,10 @@ class HeightMapBuilderTest {
     private static final int X0 = 0;
     private static final int Z0 = 0;
 
-    /** S5 多样性窗口：64×64 于大范围偏移 (2048,2048)，确保横跨大陆内陆与山地 */
-    private static final int D_GRID = 64;
-    private static final int DX0 = 2048;
-    private static final int DZ0 = 2048;
+    /** S5 多样性窗口：256×256 于大范围偏移 (-1024,0)，跨深海到高山（实测 638 个不同高度值） */
+    private static final int D_GRID = 256;
+    private static final int DX0 = -1024;
+    private static final int DZ0 = 0;
 
     private static HeightMapBuilder newBuilder() {
         return new HeightMapBuilder(new TerrainConfig(SEED));

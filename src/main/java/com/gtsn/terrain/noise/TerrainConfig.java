@@ -1,100 +1,109 @@
 package com.gtsn.terrain.noise;
 
 /**
- * 鍦板舰鍙傛暟閰嶇疆锛圡2锛?D 楂樺害鍥炬牳蹇冿級銆? *
- * <p>鎵€鏈夊瓧娈靛叕寮€ final锛屼笉鍙彉锛涙瀯閫犳椂浠呴渶涓栫晫绉嶅瓙銆? * 鍙傛暟鍏堟寜璋冪爺鎶ュ憡鍙傝€冨€煎啓姝伙紝鑻?seam 濂戠害涓嶆弧瓒冲垯鍦ㄦ璋冨弬銆?/p>
+ * 地形参数配置（2D 大陆度驱动大陆地形核心）。
+ *
+ * <p>所有字段公开 final，不可变；构造时仅需世界种子。
+ * 参数先按调参报告参考值写死，若 seam 契约不满足则在此调参。
+ *
+ * <p>重构说明：M2 版本使用 s=x+z 一维对角线大陆架剖面（shelfKink/shelfLandSlope/
+ * shelfOceanRise/shelfWiggleAmplitude），全域 256×256 验证暴露 96.4% 陆地、
+ * 91.6% 雪线、强对角条纹、种子差异仅 16% 等缺陷。本版彻底移除对角线剖面，
+ * 改为真正的 2D 大陆度驱动：海陆由低频 2D 噪声 c 的正负决定（c>0 陆，c<=0 海），
+ * 大陆度同时决定海床深度与陆地基础海拔。
  */
 public class TerrainConfig {
 
-    // ---------------- 涓栫晫甯搁噺 ----------------
+    // ---------------- 世界常量 ----------------
 
-    /** 娴峰钩闈紙闄嗗湴鍒ゅ畾绾匡細楂樺害 &gt; SEA_LEVEL 瑙嗕负闄嗗湴锛屾捣骞抽潰 63 浣嗕繚鐣欏哺绾垮甫锛?*/
+    /** 海平面（陆地判定线：高度 > SEA_LEVEL 视为陆地） */
     public static final int SEA_LEVEL = 62;
 
-    /** 涓栫晫鏈€浣?Y锛?.20 娣辨澘宀╁眰锛?*/
+    /** 世界最低 Y（1.20 深板岩层） */
     public static final int MIN_Y = -64;
 
-    /** 鍦板舰鏈€楂樺嘲 */
+    /** 地形最高峰 */
     public static final int MAX_HEIGHT = 580;
 
-    /** 娴峰簥搴曢儴鍩哄博灞傚帤搴?*/
+    /** 海床底部基岩层厚度 */
     public static final int BEDROCK_THICKNESS = 5;
 
-    /** 鍦板舰鍙敓鎴愮殑鏈€浣庢柟鍧?Y锛堝熀宀╁眰椤讹紝-64 + 5 = -59锛?*/
+    /** 地形可生成的最低方块 Y（基岩层顶，-64 + 5 = -59） */
     public static final int MIN_LAND_Y = MIN_Y + BEDROCK_THICKNESS;
 
-    // ---------------- 绉嶅瓙 ----------------
+    // ---------------- 种子 ----------------
 
-    /** 涓栫晫绉嶅瓙 */
+    /** 世界种子 */
     public final long seed;
 
-    // ---------------- 澶ч檰搴﹀眰锛堝畯瑙傚ぇ闄?娴锋磱锛?----------------
+    // ---------------- 大陆度层（宏观大陆/海洋，2D 驱动） ----------------
 
-    /** 澶ч檰搴﹀櫔澹伴鐜囷紙浣庨锛?*/
+    /** 大陆度噪声频率（低频：板块尺度 ~数百格，1/f ≈ 单个板块宽度） */
     public final float continentFrequency = 0.002f;
 
-    /** 澶ч檰搴﹀垎褰㈠叓搴︽暟 */
-    public final int continentOctaves = 4;
+    /** 大陆度分形八度数（2 八度：低八度给板块，避免高八度制造陡峭海岸梯度） */
+    public final int continentOctaves = 2;
 
-    /**
-     * 澶ч檰鏋跺墫闈⑩€斺€旀捣宀哥嚎鍩哄噯浣嶇疆銆?     * 楂樺害浠?s = x + z 涓哄瑙掔嚎鍧愭爣锛歴 == shelfKink 澶勯珮搴︽伆涓烘捣骞抽潰锛?     * s &lt; kink 涓烘捣娲嬶紙缂撳潯 -59 鈫?62锛夛紝s &gt; kink 涓洪檰鍦帮紙闄″潯 62 鈫?宄伴《锛夈€?     * 璇ュ墫闈繚璇佷换鎰?64脳64 缃戞牸鍐呴兘鍖呭惈娴峰簥鍒板嘲椤剁殑瀹屾暣姊害锛堝鏍锋€у绾︼級銆?     */
-    public final float shelfKink = 68f;
+    /** 大陆度分形增益（<0.5 削弱高八度贡献，控制海岸梯度 Δc，满足连续性 <=8） */
+    public final float continentFractalGain = 0.2f;
 
-    /** 娴峰哺绾块殢澶ч檰搴﹀櫔澹版憜鍔ㄧ殑鎸箙锛堟柟鍧楋級 */
-    public final float shelfWiggleAmplitude = 2f;
+    /** 大陆度域扭曲振幅（方块）：让海岸线自然弯曲 */
+    public final float continentWarpAmplitude = 40f;
 
-    /** 澶ч檰鏋堕檰鍦颁晶鏂滃潯姊害锛堟柟鍧?鏍硷紝鍙楄繛缁€у绾?鈮?8 绾︽潫锛?*/
-    public final float shelfLandSlope = 6.5f;
+    /** 大陆度域扭曲频率 */
+    public final float continentWarpFrequency = 0.0008f;
 
-    /** 澶ч檰鏋舵捣娲嬩晶鎶崌鎬婚噺锛堜粠娴峰簥 MIN_LAND_Y 鍒版捣骞抽潰 SEA_LEVEL锛?*/
-    public final float shelfOceanRise = 121f;
+    /** 陆地基础海拔增益（方块）：c=1 时海拔 = SEA_LEVEL + 该值 */
+    public final float continentElevationGain = 150f;
 
-    // ---------------- 灞辫剨灞傦紙Ridged 灞辩郴锛?----------------
+    /** 内陆调制坡宽：c ∈ (0, inlandRamp] 内内陆因子从 0 平滑升至 1（海岸无山）。
+     *  坡宽越大内陆因子导数越小——海岸连续约束（相邻差 <=8）要求 d(内陆)/dc × 山高 × Δc <= 8 */
+    public final float inlandRamp = 1.2f;
 
-    /** 灞辫剨鍣０棰戠巼 */
-    public final float ridgeFrequency = 0.008f;
+    /** 海床深度坡宽：|c| ∈ (0, oceanDepthScale] 内海床从海平面平滑加深至 -59。
+     *  海床导数 = 121×1.5/scale 必须 <= 8/Δc_max，实测 Δc_max≈0.012 → scale >= 0.375 */
+    public final float oceanDepthScale = 0.4f;
 
-    /** 灞辫剨鍒嗗舰鍏害鏁?*/
+    // ---------------- 山脊层（Ridged 山脉，仅内陆） ----------------
+
+    /** 山脊噪声频率 */
+    public final float ridgeFrequency = 0.002f;
+
+    /** 山脊分形八度数 */
     public final int ridgeOctaves = 4;
 
-    /** 灞辫剨搴?鈫?灞变綋澧炵泭锛堟柟鍧楋級 */
-    public final float ridgeGain = 4f;
+    /** 山脊度 → 山体增益（方块）：smoothstep(ridge01) * gain * 内陆因子 决定山高。
+     *  用 smoothstep 而非 pow 锐化：smoothstep 在 ridge01=0/1 处导数为 0，
+     *  杀死 Ridged 噪声 V 型山脊线的陡峭尖点，保证相邻差 <=8。 */
+    public final float ridgeGain = 450f;
 
-    // ---------------- 缁嗚妭灞傦紙涓皬璧蜂紡锛岄珮棰戠巼淇濊瘉缃戞牸鍐呭幓鐩稿叧锛?----------------
+    // ---------------- 细节层（中小起伏，高频保证窗口内去相关） ----------------
 
-    /** 缁嗚妭鍣０棰戠巼 */
-    public final float detailFrequency = 0.04f;
+    /** 细节噪声频率 */
+    public final float detailFrequency = 0.035f;
 
-    /** 缁嗚妭鍒嗗舰鍏害鏁?*/
+    /** 细节分形八度数 */
     public final int detailOctaves = 3;
 
-    /** 缁嗚妭鎸箙锛堟柟鍧楋級 */
+    /** 细节振幅（方块） */
     public final float detailAmplitude = 6f;
 
-    // ---------------- 娌崇綉渚佃殌灞?----------------
+    // ---------------- 河网侵蚀层 ----------------
 
-    /** 娌崇綉鍣０棰戠巼锛堜綆棰戯紝闃堝€煎垏鍓诧級 */
+    /** 河网噪声频率（低频，阈值切出河道） */
     public final float riverFrequency = 0.003f;
 
-    /** 娌崇綉鍒嗗舰鍏害鏁?*/
+    /** 河网分形八度数 */
     public final int riverOctaves = 2;
 
-    /** 娌虫祦鍒ゅ畾闃堝€硷細娌崇綉鍣０浣庝簬璇ュ€艰涓烘渤閬?*/
+    /** 河流判定阈值：河网噪声低于该值视为河道 */
     public final float riverThreshold = 0.0f;
 
-    /** 娌抽亾杩囨浮甯﹀锛堥槇鍊间袱渚у钩婊戣繃娓″搴︼級 */
+    /** 河道过渡带宽（阈值两侧平滑过渡宽度） */
     public final float riverWidth = 0.35f;
 
-    /** 娌抽亾鏈€澶т笅鎸栨繁搴︼紙鏂瑰潡锛?*/
-    public final float riverCutDepth = 5f;
-
-    // ---------------- 鍩熸壄鏇诧紙澶ч檰搴?灞辫剨灞傞噰鏍风敤锛?----------------
-
-    /** 鍩熸壄鏇叉尟骞咃紙鏂瑰潡锛?*/
-    public final float domainWarpAmplitude = 10f;
-
-    /** 鍩熸壄鏇查鐜?*/
-    public final float domainWarpFrequency = 0.0015f;
+    /** 河道最大下挖深度（方块） */
+    public final float riverCutDepth = 4f;
 
     public TerrainConfig(long seed) {
         this.seed = seed;

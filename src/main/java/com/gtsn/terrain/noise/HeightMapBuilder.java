@@ -1,26 +1,31 @@
 package com.gtsn.terrain.noise;
 
 /**
- * 2D 高度图管线（M2 核心，纯 Java，零 Minecraft 依赖）。
+ * 2D 高度图管线（纯 Java，零 Minecraft 依赖）。
  *
- * <p>内部四层合成：大陆度 → 山脊 → 细节 → 河网侵蚀。
+ * <p>内部五层合成：大陆度 → 山脊 → 细节 → 河网侵蚀 → 海陆合成。
  * 每个噪声实例使用独立种子偏移（seed+1, seed+2, ...）。
  *
- * <p>大陆度层内含大陆架剖面（楔形结构）：以 s = x + z 为对角线坐标，
- * 海岸线位于 s == kink（随大陆度噪声摆动）——s 小于 kink 为海洋缓坡
- * （-59 → 62），大于 kink 为陆地陡坡（62 → 峰顶）。该剖面保证任意
- * 64×64 网格内都包含海床到峰顶的完整高度梯度（多样性契约），且
- * 陆地/海洋比例由海岸线位置决定。
+ * <p>大陆度层为真正的 2D 大陆度驱动（重构：彻底移除 M2 的 s=x+z 一维对角线剖面）：
+ * OpenSimplex2 + FBm 低频采样 c ∈ [-1,1]（板块尺度 ~数百格，2 八度 + 低分形增益
+ * 控制海岸梯度），加一层域扭曲让海岸线自然弯曲。海陆阈值 = 0：c &gt; 0 陆地，
+ * c &lt;= 0 海洋。大陆度同时决定海床深度（c 越负越深）与陆地基础海拔（c 越大越高）。
  *
  * <p>高度合成公式：
  * <pre>
- * height = clamp(大陆架剖面 + 山脊度 × 山体增益 + 细节 × 振幅 - 河流下挖, 海床, 峰顶)
+ * oceanY = 62 - 121·smoothstep(-c/0.4) + 细节×半振幅   (c ≤ 0，钳制 [-59, 62])
+ * landY  = 62 + c·大陆海拔增益 + smoothstep(ridge01)·山体增益·内陆因子 + 细节 - 河流下挖
+ * height = c ≤ 0 ? clamp(oceanY, -59, 62) : clamp(landY, 62, 580)
  * </pre>
- * 陆地判定 = 合成高度 &gt; SEA_LEVEL。
+ * 海岸线过渡：内陆因子在 c=0 处值为 0 且导数为 0（smoothstep 端点性质），海岸无山；
+ * 海陆两侧在 c=0 处同汇海平面 62，天然连续无悬崖。
+ * 山脊用 smoothstep(ridge01) 而非 pow 锐化：smoothstep 在 ridge01=0/1 处导数为 0，
+ * 杀死 Ridged 噪声 V 型山脊线的陡峭尖点（连续性 <=8 的关键）。
  *
- * <p>海陆判定 {@link #isLand(int, int)} 与大陆度采样 {@link #continentalness(int, int)}
- * 共用大陆度层——同一噪声实例、同一 kink 公式（s &lt;= kink 为海），
- * 保证海陆划分与地形大陆架严格一致。
+ * <p>海陆判定 {@link #isLand(int, int)} = 大陆度 c &gt; 0，大陆度采样
+ * {@link #continentalness(int, int)} = c（clamp [-1,1]）——与
+ * {@link #getHeight(int, int)} 共用同一大陆度噪声实例与同一公式，
+ * 保证海陆划分与地形严格一致（M3-A 契约）。
  *
  * <p>{@link #getHeight(int, int)} 为纯函数：同一种子同坐标结果恒定，线程安全。</p>
  */
@@ -32,7 +37,6 @@ public class HeightMapBuilder {
     private final FastNoiseLite continentWarp;
 
     private final FastNoiseLite ridgeNoise;
-    private final FastNoiseLite ridgeWarp;
 
     private final FastNoiseLite detailNoise;
 
@@ -43,28 +47,30 @@ public class HeightMapBuilder {
         long s = config.seed;
 
         this.continentNoise = noise(s + 1, FastNoiseLite.NoiseType.OpenSimplex2,
-            FastNoiseLite.FractalType.FBm, config.continentFrequency, config.continentOctaves);
-        this.continentWarp = warp(s + 2, config.domainWarpFrequency, config.domainWarpAmplitude);
+            FastNoiseLite.FractalType.FBm, config.continentFrequency, config.continentOctaves,
+            config.continentFractalGain);
+        this.continentWarp = warp(s + 2, config.continentWarpFrequency, config.continentWarpAmplitude);
 
         this.ridgeNoise = noise(s + 3, FastNoiseLite.NoiseType.OpenSimplex2S,
-            FastNoiseLite.FractalType.Ridged, config.ridgeFrequency, config.ridgeOctaves);
-        this.ridgeWarp = warp(s + 4, config.domainWarpFrequency, config.domainWarpAmplitude);
+            FastNoiseLite.FractalType.Ridged, config.ridgeFrequency, config.ridgeOctaves, 0.5f);
 
         this.detailNoise = noise(s + 5, FastNoiseLite.NoiseType.OpenSimplex2S,
-            FastNoiseLite.FractalType.FBm, config.detailFrequency, config.detailOctaves);
+            FastNoiseLite.FractalType.FBm, config.detailFrequency, config.detailOctaves, 0.5f);
 
         this.riverNoise = noise(s + 6, FastNoiseLite.NoiseType.OpenSimplex2,
-            FastNoiseLite.FractalType.FBm, config.riverFrequency, config.riverOctaves);
+            FastNoiseLite.FractalType.FBm, config.riverFrequency, config.riverOctaves, 0.5f);
     }
 
     private static FastNoiseLite noise(long seed, FastNoiseLite.NoiseType type,
-                                       FastNoiseLite.FractalType fractal, float frequency, int octaves) {
+                                       FastNoiseLite.FractalType fractal, float frequency, int octaves,
+                                       float fractalGain) {
         FastNoiseLite n = new FastNoiseLite();
         n.SetSeed((int) seed);
         n.SetNoiseType(type);
         n.SetFractalType(fractal);
         n.SetFrequency(frequency);
         n.SetFractalOctaves(octaves);
+        n.SetFractalGain(fractalGain);
         return n;
     }
 
@@ -90,54 +96,57 @@ public class HeightMapBuilder {
         float fx = x;
         float fz = z;
 
-        // 1. 大陆度层：海岸线位置（域扭曲后采样，与 isLand/continentalness 同源同公式）
-        float kink = kinkAt(fx, fz);
+        // 1. 大陆度层：2D 低频采样（域扭曲后），海陆阈值 0
+        float c = continentalnessAt(fx, fz);
 
-        // 大陆架剖面：s < kink 海洋缓坡，s > kink 陆地陡坡
-        float s = fx + fz;
-        float base;
-        if (s <= kink) {
-            base = TerrainConfig.MIN_LAND_Y + config.shelfOceanRise * s / kink;
-        } else {
-            base = TerrainConfig.SEA_LEVEL + config.shelfLandSlope * (s - kink);
-        }
-
-        // 2. 山脊层（域扭曲后采样，Ridged 输出集中于 [0, 1]）
-        FastNoiseLite.Vector2 ridgeCoord = new FastNoiseLite.Vector2(fx, fz);
-        ridgeWarp.DomainWarp(ridgeCoord);
-        float ridge = ridgeNoise.GetNoise(ridgeCoord.x, ridgeCoord.y);
+        // 2. 山脊层：Ridged 归一化到 [0,1] 后 smoothstep（导数为 0 端点杀死尖点悬崖）
+        float ridgeIntensity = smoothstep01(ridgeAt(fx, fz));
 
         // 3. 细节层（中小起伏）
         float detail = detailNoise.GetNoise(fx, fz); // ~[-1, 1]
 
-        // 4. 高度合成：大陆架剖面 + 山脊度 × 山体增益 + 细节 × 振幅
-        float height = base + ridge * config.ridgeGain + detail * config.detailAmplitude;
+        float height;
+        if (c <= 0) {
+            // 海洋：c 越负越深，smoothstep 深度映射（c <= -oceanDepthScale 处达海床）
+            float depth = smoothstep01(Math.min(1f, -c / config.oceanDepthScale));
+            height = TerrainConfig.SEA_LEVEL
+                + (TerrainConfig.MIN_LAND_Y - TerrainConfig.SEA_LEVEL) * depth
+                + detail * config.detailAmplitude * 0.5f;
+            // 海洋高度钳制到 [海床, 海平面]（c 略负也可能被细节顶到 62，属海岸浅滩）
+            height = Math.max(Math.min(height, TerrainConfig.SEA_LEVEL), TerrainConfig.MIN_LAND_Y);
+        } else {
+            // 4. 陆地基础海拔：大陆度越高海拔越高（海岸平原 → 大陆内陆丘陵）
+            float base = TerrainConfig.SEA_LEVEL + c * config.continentElevationGain;
+            // 5. 山体调制：只在陆地且偏向内陆（海岸无山，向内陆渐高）
+            float inland = inlandFactor(c);
+            height = base + ridgeIntensity * config.ridgeGain * inland + detail * config.detailAmplitude;
 
-        // 5. 河网侵蚀：河网噪声低于阈值处平滑下挖（避免悬崖断裂）
-        float river = riverNoise.GetNoise(fx, fz);
-        if (river < config.riverThreshold) {
-            float t = (config.riverThreshold - river) / config.riverWidth;
-            t = Math.min(t, 1f);
-            float smooth = t * t * (3f - 2f * t); // smoothstep
-            height -= config.riverCutDepth * smooth;
+            // 6. 河网侵蚀：河流噪声低于阈值处平滑下挖（避免悬崖断裂）
+            float river = riverNoise.GetNoise(fx, fz);
+            if (river < config.riverThreshold) {
+                float t = (config.riverThreshold - river) / config.riverWidth;
+                t = Math.min(t, 1f);
+                float smooth = t * t * (3f - 2f * t); // smoothstep
+                height -= config.riverCutDepth * smooth;
+            }
+
+            // 钳制到 [海平面, 峰顶]
+            height = Math.max(Math.min(height, TerrainConfig.MAX_HEIGHT), TerrainConfig.SEA_LEVEL);
         }
-
-        // 钳制到世界范围 [海床, 峰顶]
-        height = Math.max(Math.min(height, TerrainConfig.MAX_HEIGHT), TerrainConfig.MIN_LAND_Y);
         return (int) Math.round(height);
     }
 
     /**
-     * 海陆判定：大陆架剖面 s = x + z &gt; kink 为陆，s &lt;= kink 为海。
-     * 与 {@link #getHeight(int, int)} 共用同一大陆度噪声实例与同一 kink 公式，
-     * 保证海陆划分与地形大陆架严格一致。
+     * 海陆判定：2D 大陆度 c &gt; 0 为陆，c &lt;= 0 为海。
+     * 与 {@link #getHeight(int, int)} 共用同一大陆度噪声实例与同一公式，
+     * 保证海陆划分与地形严格一致。
      *
      * @param x 世界 X 坐标（方块）
      * @param z 世界 Z 坐标（方块）
      * @return true 为陆地，false 为海洋
      */
     public boolean isLand(int x, int z) {
-        return (x + z) > kinkAt(x, z);
+        return continentalnessAt(x, z) > 0f;
     }
 
     /**
@@ -159,9 +168,19 @@ public class HeightMapBuilder {
         return continentNoise.GetNoise(coord.x, coord.y);
     }
 
-    /** 海岸线位置 kink（方块），getHeight / isLand 的唯一公式 */
-    private float kinkAt(float fx, float fz) {
-        return config.shelfKink + config.shelfWiggleAmplitude * continentalnessAt(fx, fz);
+    /** 山脊层采样，Ridged 输出约 [-1,1]，归一化到 [0,1] */
+    private float ridgeAt(float fx, float fz) {
+        float r = ridgeNoise.GetNoise(fx, fz);
+        return Math.max(0f, Math.min(1f, (r + 1f) * 0.5f));
+    }
+
+    /** 内陆因子：c ∈ (0, inlandRamp] 从 0 平滑升至 1（smoothstep，c=0 处值为 0 导数为 0） */
+    private float inlandFactor(float c) {
+        return smoothstep01(Math.min(1f, c / config.inlandRamp));
+    }
+
+    private static float smoothstep01(float t) {
+        return t * t * (3f - 2f * t);
     }
 
     private static double clampUnit(double v) {
