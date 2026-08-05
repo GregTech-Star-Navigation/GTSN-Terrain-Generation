@@ -98,10 +98,11 @@ public final class HeightCache {
                 grid[gz * gridSize + gx] = rawHeight.rawHeight(worldX0 + gx, worldZ0 + gz);
             }
         }
-        // 侵蚀（纯内存迭代）。talus/迭代数/水滴参数由 HeightMapBuilder 配置注入（见 configureErosion）。
+        // 侵蚀（纯内存迭代）。边界 ring 冻结（border 宽度不修改，只作邻居输入）——
+        // 保证跨块一致：边界格值恒 = raw，邻居区块读到的对应格相同。
         TerrainErosion.HydraulicParams hp = fillParams();
-        grid = TerrainErosion.thermalErode(grid, gridSize, this.talus, this.thermalIterations);
-        grid = TerrainErosion.hydraulicErode(grid, gridSize, seedFor(cx, cz), hp);
+        grid = TerrainErosion.thermalErode(grid, gridSize, this.talus, this.thermalIterations, this.border);
+        grid = TerrainErosion.hydraulicErode(grid, gridSize, seedFor(cx, cz), hp, this.border);
         return grid;
     }
 
@@ -133,11 +134,11 @@ public final class HeightCache {
         this.erosionRadius = erosionRadius;
     }
 
-    /** 水滴参数组装 */
+    /** 水滴参数组装（minErosionSlope：缓坡不侵蚀，防平地被水流汇聚挖坑破坏连续性） */
     private TerrainErosion.HydraulicParams fillParams() {
         return new TerrainErosion.HydraulicParams(
             dropsPerChunk, maxSteps, inertia, sedimentCapacityFactor, minSedimentCapacity,
-            erosionRate, depositionRate, erosionRadius);
+            erosionRate, depositionRate, erosionRadius, 0.5f);
     }
 
     /** 区块种子：确定性（同区块必然同 RNG 序列） */

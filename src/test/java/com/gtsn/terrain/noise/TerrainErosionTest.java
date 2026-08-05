@@ -100,7 +100,7 @@ class TerrainErosionTest {
         }
 
         TerrainErosion.HydraulicParams p = new TerrainErosion.HydraulicParams(
-            400, 30, 0.05f, 4f, 0.01f, 0.3f, 0.1f, 3);
+            400, 30, 0.05f, 4f, 0.01f, 0.3f, 0.1f, 3, 0f);
         float[] out = TerrainErosion.hydraulicErode(grid, size, 42L, p);
 
         // 谷道 = 出现显著低于原始斜坡的深谷（至少 3 个格点比原始高度低 > 6）
@@ -127,7 +127,7 @@ class TerrainErosionTest {
         for (int i = 0; i < grid.length; i++) grid[i] = 200f + (i % 11) * 5f;
 
         TerrainErosion.HydraulicParams p = new TerrainErosion.HydraulicParams(
-            200, 40, 0.05f, 4f, 0.01f, 0.3f, 0.1f, 3);
+            200, 40, 0.05f, 4f, 0.01f, 0.3f, 0.1f, 3, 0f);
         float[] out = TerrainErosion.hydraulicErode(grid, size, 7L, p);
 
         for (int i = 0; i < out.length; i++) {

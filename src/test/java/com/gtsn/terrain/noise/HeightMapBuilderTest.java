@@ -297,12 +297,15 @@ class HeightMapBuilderTest {
     }
 
     /**
-     * S11 坡度分布（M6 现实感指标 b）：8 块基线平均坡度 <12°，>30° 陡坡占比 <5%。
+     * S11 坡度分布（M6 现实感指标 b）：8 块基线平均坡度 <22°，>30° 陡坡占比 <15%。
+     *
+     * <p>阈值按真实地形数据放宽（用户决策 2026-08-05）：真实山地窗口平均坡度 20-30°、
+     * 陡坡面积 20%+ 是常态；原 <12°/<5% 是荷兰平原标准，与「现实地形」目标自相矛盾。
+     * 保留 maxDelta≤8（防悬崖）作为硬性连续性约束，坡度契约只防「全窗口陡峭」。
      *
      * <p>坡度基线取 8 块（同 HeightmapAnalyzer.SLOPE_BASE）：1 块基线在整数高度下
-     * 相邻差 1 就是 45°，无法区分现实坡度；8 块基线对应「地形起伏的平缓尺度」，
-     * avg<12° ⇔ 平均 8 块落差 <1.7 块。全窗口平均（海洋坡度 0 计入，拉低均值——合理，
-     * 因为海洋占窗口大半时现实地形平均坡度本来就低）。
+     * 相邻差 1 就是 45°，无法区分现实坡度；8 块基线对应「地形起伏的平缓尺度」。
+     * 全窗口平均（海洋坡度 0 计入，拉低均值——合理，因为海洋占窗口大半时现实地形平均坡度本来就低）。
      */
     @Test
     void s11_slopeDistribution() {
@@ -325,10 +328,10 @@ class HeightMapBuilderTest {
             }
             double avg = slopeSum / slopeCount;
             double steepRatio = 100.0 * steep30 / slopeCount;
-            assertTrue(avg < 12.0,
-                "窗口 (" + win[0] + "," + win[1] + ") 平均坡度 " + String.format("%.2f°", avg) + " 超过 12°");
-            assertTrue(steepRatio < 5.0,
-                "窗口 (" + win[0] + "," + win[1] + ") >30° 陡坡占比 " + String.format("%.2f%%", steepRatio) + " 超过 5%");
+            assertTrue(avg < 22.0,
+                "窗口 (" + win[0] + "," + win[1] + ") 平均坡度 " + String.format("%.2f°", avg) + " 超过 22°");
+            assertTrue(steepRatio < 15.0,
+                "窗口 (" + win[0] + "," + win[1] + ") >30° 陡坡占比 " + String.format("%.2f%%", steepRatio) + " 超过 15%");
         }
     }
 

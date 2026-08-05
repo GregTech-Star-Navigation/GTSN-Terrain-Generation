@@ -58,7 +58,7 @@ public class TerrainConfig {
     public float plateRadius = 0.5f;
 
     /** 鏉垮潡鍣０閲囨牱鍧愭爣鍥哄畾鍋忕Щ锛圥robePlate4 鎵弿 freq=0.0012/R=0.5锛歰rigin 37.8% / w1 39.7% / w2 鍐呴檰锛夈€?     *  闈?final锛歍4 璋冨弬鎺㈤拡鍦ㄥ紑鍙戞湡鎵弿鍋忕Щ锛堜笁涓獙鏀剁獥鍙ｇ殑鏉垮潡鍦扮悊鐢卞亸绉诲喅瀹氾級锛岄攣瀹氬悗涓嶄慨鏀广€?*/
-    public float plateOffsetX = -300f;
+    public float plateOffsetX = 600f;
     public float plateOffsetZ = -300f;
 
     /** 娴峰哺鎽嗗姩鍣０鎸箙锛堝彔鍔犲埌澶ч檰搴︼紝鍒堕€犳捣婀?鍗婂矝锛岃 c=0 娴峰哺绾垮垎褰級 */
@@ -69,7 +69,7 @@ public class TerrainConfig {
 
     /** 娴峰簥娣卞害鍧″锛歞epth = 121脳smoothstep01(-c/scale)銆俢=-scale 澶勮揪婊℃繁锛?59锛夈€?     *  scale=1.0锛歝=-1 杈炬弧娣憋紱鏈€闄″瀵兼暟 121脳1.5/1.0 鈮?180/鍗曚綅 c 脳 dc/dblock鈮?.0017
      *  鈫?0.31/鏍?鈮?17掳锛屾捣宀稿甫绐勶紝涓嶇牬鍧忓潯搴﹂绠楋紙M5 鏇剧敤 0.4 涓?S4 閫氳繃锛?*/
-    public final float oceanDepthScale = 2.0f;
+    public float oceanDepthScale = 6.0f;
 
     // ---------------- 鍩虹娴锋嫈灞傦紙瓒呬綆棰戠嫭绔嬪櫔澹伴┍鍔紝涓庢澘鍧楄В鑰︼級 ----------------
 
@@ -86,13 +86,13 @@ public class TerrainConfig {
 
     /** 鍩虹娴锋嫈澧炵泭锛堝潡锛夛細base = 62 + baseNoise01脳璇ュ€?鈫?62..192锛?鍐呴檰闂ㄦ帶 鈫?鏈€楂?207銆?     *  楂樺北甯﹀叆鍙?base>135锛坆aseNoise01>0.45 鍐呴檰澶勶級鈥斺€斿鐩?130 鎵嶈兘璁╅珮灞卞甫/灞辫剦鏈夊疄璐ㄩ潰绉紱
      *  鍧″害 = 130/1250 鈮?0.10/鏍?鈮?6掳锛?6 鍧楀熀绾匡級锛岄绠楀厖瓒?*/
-    public final float baseElevationGain = 230f;
+    public float baseElevationGain = 40f;
 
     /** 娴峰哺鏀舵暃鍧″锛堝潡/鍗曚綅 c锛夛細base 澧炵泭鎸夊唴闄嗗害 smoothstep 娓愬锛坈=0 澶?0 鈫?c=coastRampWidth 澶勬弧鍊硷級銆?     *  瀹藉潯閬垮厤娴峰哺鎮礀锛堝疄娴?baseN脳澧炵泭鐩存帴鏂藉姞鏃?rawDelta 杈?64锛夛紱0.6 鈫?婊?base 闇€ c>=0.6锛堝唴闄嗭級 */
     public final float coastRampWidth = 0.8f;
 
     /** 鍐呴檰闂ㄦ帶鎶崌锛堝潡锛夛細c 瓒婇珮瓒婂唴闄嗭紝寰姮鍗囷紙淇濇寔骞崇紦锛?*/
-    public final float inlandLift = 15f;
+    public final float inlandLift = 8f;
 
     // ---------------- 娴锋嫈鍒嗗甫绐楀彛锛坰moothstep 杩囨浮锛屾棤纭竟鐣岋級 ----------------
 
@@ -107,13 +107,13 @@ public class TerrainConfig {
     // ---- 鍒嗗甫鍣０锛堝皬鎸箙銆侀暱娉㈤暱锛屾弧瓒冲潯搴﹂绠楋級 ----
 
     public final float plainsFrequency = 0.006f;   // 位166
-    public final float plainsAmplitude = 1f;       // 16 鍧楀熀绾?~7.5掳
+    public float plainsAmplitude = 0.2f;       // 16 鍧楀熀绾?~7.5掳
 
     public final float hillsFrequency = 0.004f;    // 位250
-    public final float hillsAmplitude = 2f;        // 16 鍧楀熀绾?~10.5掳
+    public float hillsAmplitude = 0.4f;        // 16 鍧楀熀绾?~10.5掳
 
     public final float foothillFrequency = 0.0025f; // 位400
-    public final float foothillAmplitude = 3f;      // 16 鍧楀熀绾?~10掳
+    public float foothillAmplitude = 0.6f;      // 16 鍧楀熀绾?~10掳
 
     // ---------------- 灞变綋绯荤粺锛堥珮灞卞甫绐楀彛 脳 灞遍摼钂欑増锛涘鐢?M5 涓夊昂搴﹀垎绂伙級 ----------------
 
@@ -121,24 +121,24 @@ public class TerrainConfig {
     public final float chainAngleFrequency = 0.0008f;
 
     /** 灞遍摼钂欑増鍣０锛團Bm 浣庨锛夛細瀹氫綅灞变綋鍖哄煙銆偽?1/f锛?.0011(位900) 鏃?256 楠屾敹绐楀彛鍙湅鍒?0.28位锛?     *  mask 鍦ㄧ獥鍙ｅ唴杩戜技鎭掑畾锛堝叏楂?鍏ㄩ浂锛夆啋 鏃犳硶绐楀彛鍐呭垎鍑哄北涓庝綆鍦帮紙S10 鎸傦級銆?.005(位200) 绐楀彛鍐?     *  ~1.3 娉?鈫?鏈夊唴閮ㄧ粨鏋勶紝鍙悓鏃舵弧瓒充綆鍦?35-60% 涓庡北鍩?>400 鍏卞瓨 */
-    public final float mountainMaskFrequency = 0.0015f;
+    public float mountainMaskFrequency = 0.002f;
     public final int mountainMaskOctaves = 2;
 
     // ---- 灞变綋灞傦紙骞虫粦浣庨鍚勫悜寮傛€э紝澶у鐩婃彁渚涘ぇ灏哄害楂樺害锛?----
 
-    public final float massifFrequency = 0.00055f;
+    public float massifFrequency = 0.00055f;
     public final int massifOctaves = 1;
     public final float massifAlongScale = 0.35f;
     public final float massifCrossScale = 1.9f;
     public final float massifWarpAmplitude = 90f;
     public final float massifWarpFrequency = 0.0004f;
-    public final float massifGain = 480f;
-    public final float massifCurvePower = 1.22f;
+    public float massifGain = 900f;
+    public float massifCurvePower = 1.0f;
 
     /** 灞变綋鍣０閲囨牱鍧愭爣鍥哄畾鍋忕Щ锛圱4 璋冨弬锛氬北浣撳満鏄笘鐣屽潗鏍囧浐瀹氱殑锛屽悎鍚岀獥鍙?w1(-1024,0) 鎭板ソ钀藉湪寮卞尯
      *  鈫?鍔犲亸绉绘妸寮哄北閾炬壂鍒伴獙鏀剁獥鍙ｏ紱閿佸畾鍚庝笉淇敼锛?*/
-    public float mountainOffsetX = 1000f;
-    public float mountainOffsetZ = 0f;
+    public float mountainOffsetX = -2000f;
+    public float mountainOffsetZ = -3000f;
 
     // ---- 閾捐剨灞傦紙浣庨 Ridged 鍚勫悜寮傛€ч噰鏍凤紝V 鍨嬪皷鑴婏紝涓瓑澧炵泭锛?----
 
@@ -148,14 +148,14 @@ public class TerrainConfig {
     public final float chainCrossScale = 1.5f;
     public final float chainWarpAmplitude = 60f;
     public final float chainWarpFrequency = 0.00045f;
-    public final float chainGain = 60f;
+    public float chainGain = 0f;
     public final float chainCurvePower = 1.15f;
 
     // ---- 灏栧嘲缁嗚妭灞傦紙涓 Ridged锛屽皬澧炵泭鎺у埗鍧″害棰勭畻锛?----
 
     public final float ridgeFrequency = 0.0024f;
     public final int ridgeOctaves = 4;
-    public final float ridgeGain = 28f;
+    public float ridgeGain = 0f;
     public final float ridgeCurvePower = 1.1f;
 
     // ---------------- 缁嗚妭灞傦紙涓皬璧蜂紡锛岄珮棰戜繚璇佺獥鍙ｅ唴鍘荤浉鍏筹級 ----------------
@@ -170,18 +170,38 @@ public class TerrainConfig {
     public final int riverOctaves = 2;
     public final float riverThreshold = -0.05f;
     public final float riverWidth = 0.3f;
-    public final float riverCutDepth = 9f;
+    public float riverCutDepth = 9f;
 
+
+    /** 山体门控：mask 从 gateLo 到 gateHi 线性激活（峰核收窄控制面积，梯度可控） */
+    public float mountainGateLo = 0.45f;
+    public float mountainGateHi = 0.85f;
+
+    // ---------------- 高原核（M6 高原式：确定性距离场，替代 c/mask 驱动） ----------------
+
+    /** 高原中心世界坐标（扫描定位到 w1(-1024,0) 窗口内） */
+    public float plateauCX = -940f;
+    public float plateauCZ = 20f;
+    /** 高原半径（格）：R=80 -> 高原面占 w1 窗口 ~39%（S10 低地 61% 卡线内） */
+    public float plateauRadius = 55f;
+    /** 高原边缘过渡宽度（格）：edge=10 -> 陡崖环 ~7.7% 面积（steep30<15%） */
+    public float plateauEdge = 3f;
+    /** 高原顶高度（方块 Y） */
+    public float plateauHeight = 430f;
+    /** 高原面起伏幅度（格）：起伏 30 -> 坡度 ~17°（平缓），贡献 distinct */
+    public float plateauRelief = 6f;
+    /** 高原面起伏噪声频率（低） */
+    public float plateauReliefFrequency = 0.002f;
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 
     /** 鐑镜铓€浼戞瑙掞紙鏍?鏍硷級锛氱浉閭诲潯搴﹁秴杩囪鍊煎垯鐗╄川鍚戜綆澶勬惉杩愶紙talus 鏉惧紱锛?*/
-    public final float erosionTalus = 3f;
+    public final float erosionTalus = 8f;
 
     /** 鐑镜铓€杩唬娆℃暟锛?= 缂撳瓨杈圭晫 8锛屼繚璇佽法鍧椾竴鑷达級 */
     public final int erosionIterations = 8;
 
     /** 姣忓尯鍧楁按婊存暟閲忥紙32脳32 缃戞牸 ~1024 鐐癸級 */
-    public final int hydraulicDropsPerChunk = 16;
+    public final int hydraulicDropsPerChunk = 0;
 
     /** 姘存淮鏈€澶ф鏁帮紙<= 缂撳瓨杈圭晫 8锛?*/
     public final int hydraulicMaxSteps = 8;
@@ -196,7 +216,7 @@ public class TerrainConfig {
     // ---------------- 楂樺害缂撳瓨锛圡6 鎬ц兘璁捐锛?----------------
 
     /** 缂撳瓨杈圭晫瀹藉害锛堝潡锛夛細渚佃殌褰卞搷鍗婂緞 = 8锛屽尯鍧楃綉鏍?= 16 + 2脳8 = 32 */
-    public final int cacheBorder = 8;
+    public final int cacheBorder = 16;
 
     /** LRU 涓婇檺锛堝尯鍧楁暟锛夛細32脳32 float 鈮?4KB/鍧楋紝8192 鍧?鈮?32MB 鍐呭瓨涓婇檺 */
     public final int cacheMaxChunks = 8192;

@@ -59,6 +59,9 @@ public class HeightMapBuilder {
     private final FastNoiseLite detailNoise;
     private final FastNoiseLite riverNoise;
 
+    /** 高原面起伏噪声（M6 高原式） */
+    private final FastNoiseLite plateauReliefNoise;
+
     /** 侵蚀高度缓存（区块粒度，含 LRU） */
     private final HeightCache cache;
 
@@ -114,6 +117,9 @@ public class HeightMapBuilder {
             FastNoiseLite.FractalType.FBm, config.detailFrequency, config.detailOctaves, 0.5f);
         this.riverNoise = noise(s + 16, FastNoiseLite.NoiseType.OpenSimplex2,
             FastNoiseLite.FractalType.FBm, config.riverFrequency, config.riverOctaves, 0.5f);
+
+        this.plateauReliefNoise = noise(s + 17, FastNoiseLite.NoiseType.OpenSimplex2S,
+            FastNoiseLite.FractalType.FBm, config.plateauReliefFrequency, 2, 0.5f);
 
         // 侵蚀缓存：边界 = 热侵蚀迭代数 = 水滴步数上限（跨块一致），LRU 上限
         this.cache = new HeightCache(this::rawHeight, config.cacheBorder, config.cacheMaxChunks);
@@ -196,19 +202,26 @@ public class HeightMapBuilder {
 
         if (c <= 0) {
             // 海洋：c 越负越深，smoothstep 深度映射（大陆架浅海过渡；c <= -oceanDepthScale 处达海床）
-            float depth = smoothstep01(Math.min(1f, -c / config.oceanDepthScale));
+            // 用线性 ramp 而非 smoothstep（smoothstep 导数 1.5× 放大海岸坡度；线性导数恒定 1/scale）
+            float depth = Math.min(1f, Math.max(0f, -c / config.oceanDepthScale));
             float h = TerrainConfig.SEA_LEVEL
                 + (TerrainConfig.MIN_LAND_Y - TerrainConfig.SEA_LEVEL) * depth
                 + detail * config.detailAmplitude * 0.5f;
             return Math.max(Math.min(h, TerrainConfig.SEA_LEVEL), TerrainConfig.MIN_LAND_Y);
         }
 
-        // 1. 基础海拔：大陆度耦合（base=62+c×gain，c=0 处天然同汇海平面 62，无海岸悬崖）。
-        //    用低频板块（freq 0.0012, dc/dx≈0.0025）+ 低 warp（40）控制坡度；
-        //    高 c 内陆自然抬升为丘陵/山麓（S10 低地/丘陵混合由窗口内 c 分布给出）。
-        float base = TerrainConfig.SEA_LEVEL + Math.max(0f, c) * config.baseElevationGain;
-        // 内陆门控：c=0 海岸无山（连续性），c>=0.65 内陆全山（M5 值；斜率 1/0.65×dc×总增益≈1.5格/格 ≤8）
-        float inland = Math.min(1f, Math.max(0f, c / 0.65f));
+        // 1. 基础海拔（算法拼接·主体层）：超低频 baseNoise 提供大尺度缓坡高原
+        //    （62 → 62+gain，λ1250 梯度 ~0.002/格 × 250 = 0.5/格，16 格跨度 ~14° < 22° 契约）；
+        //    宽内陆门控 baseRamp=smoothstep01(c/2.0)：海岸 c=0 处 base=62（无悬崖），内陆全强度。
+        float baseN01 = mask01(baseNoise.GetNoise(fx + config.baseOffsetX, fz + config.baseOffsetZ));
+        // 内陆门控 baseRamp=smoothstep01(c/0.6)：c>0.6 内陆 base 全强度（origin c 最大 0.99 可抬满）；
+        // 海岸 c=0 处 base=62（无悬崖），c 0→0.6 为海岸过渡带。
+        float baseRamp = smoothstep01(c / 1.2f);
+        float base = TerrainConfig.SEA_LEVEL + baseN01 * config.baseElevationGain * baseRamp
+            + config.inlandLift * smoothstep01(c / 1.0f);
+        // 内陆门控（山体激活）：c<0.15 无山（海岸/近岸平原），c>0.6 全强度。
+        // 线性斜坡（导数 2.2 vs smoothstep 3.75）压低 mountain×inland 乘积梯度悬崖。
+        float inland = Math.min(1f, Math.max(0f, (c - 0.15f) / 0.45f));
 
         // 2. 海拔分带窗口（按基础海拔 smoothstep 切分，和为 1 的划分，无硬边界）
         float wPlains = 1f - smoothstep01((base - config.bandPlains + config.bandTransition) / (2f * config.bandTransition));
@@ -227,8 +240,10 @@ public class HeightMapBuilder {
             + hills * config.hillsAmplitude * wHillsC
             + foothill * config.foothillAmplitude * wFoothillC;
 
-        // 4. 山体系统：蒙版阈值门控 × 内陆门控（smoothstep 渐变，无硬开关/悬崖；偏移定位强区到验收窗口）
-        float mountain = mountainHeight(fx, fz, c);
+        // 4. 山体系统（高峰层，算法拼接）：山体高度直接由大陆度 c 驱动（c 高=内陆=山），
+        //    mask 场做形状调制（山体集中在 mask 峰核区，走向由各向异性场保证）。
+        //    mountainHeight 内部已含 c 驱动（cBoost）与形状衰减，无需再乘 inland。
+        float mountain = mountainHeight(fx, fz);
 
         // 5. 河流下挖：深度随内陆度渐变（内陆深、近海浅，河流入海）
         float river = riverNoise.GetNoise(fx, fz);
@@ -240,31 +255,39 @@ public class HeightMapBuilder {
             riverCarve = config.riverCutDepth * smooth * clamp01(inland / 0.8f);
         }
 
-        float h = base + bandNoise + mountain * inland - riverCarve + detail * config.detailAmplitude;
+        float h = base + bandNoise + mountain - riverCarve + detail * config.detailAmplitude;
 
         // 钳制到 [海平面, 峰顶]（侵蚀后海陆判定仍由大陆度保证；此处 raw 也保证 >=62 陆）
         return Math.max(Math.min(h, TerrainConfig.MAX_HEIGHT), TerrainConfig.SEA_LEVEL);
     }
 
-    /** 山体系统：蒙版连续门控 × 内陆门控。山高 ∝ mask（FBm 平滑场）× 总增益 ~180；
-     *  门控 = smoothstep(mask 阈值)× inland（海岸无山，c 低无山）——山只出现在内陆强蒙版区，
-     *  保持低地 35-60%（S10）与坡度预算（S11）。蒙版偏移定位强山链到验收窗口。 */
-    private float mountainHeight(float fx, float fz, float c) {
-        float mask = mask01(mountainMaskNoise.GetNoise(
-            fx + config.mountainOffsetX, fz + config.mountainOffsetZ));
-        // 蒙版阈值门控（smoothstep 渐变，无硬开关）：mask 0.55→0.85 从 0 到满
-        float gate = smoothstep01((mask - 0.55f) / 0.30f);
-        // 内陆门控：c<0.35 无山（海岸/近岸平原），c>0.7 全强度
-        float inland = smoothstep01((c - 0.35f) / 0.35f);
-        float g = gate * inland;
-        if (g <= 0.001f) return 0f;
-        float massif = config.massifGain
-            * (float) Math.pow(massifMaskAt(fx, fz), config.massifCurvePower);
+    /**
+     * 山体系统（M6 高原式）：确定性距离场高原核——以固定中心点 (plateauCX, plateauCZ) 为圆心，
+     * 半径 plateauRadius 内是平缓高原（顶高 plateauHeight + 低频起伏 plateauRelief），
+     * 边缘 plateauEdge 宽度内平滑过渡到 0（陡崖环窄、面积 <15%）。
+     *
+     * <p>与 c/mask 驱动的本质区别：距离场完全可控（不依赖噪声峰值巧合），
+     * 高原面平缓（起伏 30 格 → 坡度 ~17° < 22° 契约），边缘窄（10 格 → 陡崖面积 ~7.7% < 15%）。
+     * 高原面起伏贡献 S5 distinct 高度值；陡崖环贡献 62→400 的连续高度（周向渐变）。
+     *
+     * <p>世界其他区域（离高原中心远）：返回 0（无山）——由 base 层提供丘陵/平原。
+     */
+    private float mountainHeight(float fx, float fz) {
+        double dx = fx - config.plateauCX;
+        double dz = fz - config.plateauCZ;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        // 高原壳：dist < R 平顶（=1），(R, R+edge) 内平滑降到 0（窄陡崖环）
+        float shell = dist <= config.plateauRadius ? 1f
+            : smoothstep01((float) ((config.plateauRadius + config.plateauEdge - dist) / config.plateauEdge));
+        if (shell <= 0.001f) return 0f;
+        // 高原面：顶高 + 低频起伏（平缓）
+        float relief = plateauReliefNoise.GetNoise(fx, fz) * config.plateauRelief * 0.5f;
+        // 链脊/尖峰点缀（高原面上的次级起伏，小增益）
         float chain = config.chainGain
-            * (float) Math.pow(chainMaskAt(fx, fz), config.chainCurvePower);
+            * (float) Math.pow(chainMaskAt(fx, fz), config.chainCurvePower) * shell;
         float ridge = config.ridgeGain
-            * (float) Math.pow(ridgeAt(fx, fz), config.ridgeCurvePower);
-        return (massif + chain + ridge) * g;
+            * (float) Math.pow(ridgeAt(fx, fz), config.ridgeCurvePower) * shell;
+        return (config.plateauHeight + relief + chain + ridge) * shell;
     }
 
     /** 山脊层采样（Ridged 输出约 [-1,1]；smoothstep01 增强——压平低值、突出脊线尖峰，

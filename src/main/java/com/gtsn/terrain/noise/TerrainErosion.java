@@ -27,7 +27,8 @@ public final class TerrainErosion {
         float minSedimentCapacity,
         float erosionRate,  // 侵蚀率（每步从地面带走沉积物上限）
         float depositionRate, // 沉积率
-        int erosionRadius   // 侵蚀半径（格子）
+        int erosionRadius,  // 侵蚀半径（格子）
+        float minErosionSlope // 最小侵蚀坡度（格/步）：低于该坡度的缓坡不侵蚀（防平地被水流汇聚挖坑）
     ) {}
 
     private TerrainErosion() {}
@@ -43,13 +44,29 @@ public final class TerrainErosion {
      * @return 侵蚀后新网格
      */
     public static float[] thermalErode(float[] grid, int size, float talusAngle, int iterations) {
+        return thermalErode(grid, size, talusAngle, iterations, 0);
+    }
+
+    /**
+     * 热侵蚀（talus 松弛）：迭代，每点若与最低 4-邻域坡度差 > talusAngle，
+     * 把超出部分的一半搬到低处。质量守恒（只搬运不增减）。
+     *
+     * @param grid       size×size 行优先高度网格
+     * @param size       网格边长
+     * @param talusAngle 休止角（最大允许坡度，格/格）
+     * @param iterations 松弛迭代次数
+     * @param border     冻结边界宽度：border 内的格永不修改（只作邻居输入），
+     *                   保证跨区块一致（边界格值 = raw，邻居区块同样只读不写）
+     * @return 侵蚀后新网格
+     */
+    public static float[] thermalErode(float[] grid, int size, float talusAngle, int iterations, int border) {
         float[] src = grid.clone();
         float[] dst = new float[grid.length];
         for (int it = 0; it < iterations; it++) {
             // dst 先整体拷贝 src，再对每个点做「自身减、低邻加」的搬运（累加语义，避免覆盖）
             System.arraycopy(src, 0, dst, 0, grid.length);
-            for (int y = 0; y < size; y++) {
-                for (int x = 0; x < size; x++) {
+            for (int y = border; y < size - border; y++) {
+                for (int x = border; x < size - border; x++) {
                     int idx = y * size + x;
                     float h = src[idx];
                     // 找最低 4-邻域
@@ -106,6 +123,18 @@ public final class TerrainErosion {
      * @return 侵蚀后新网格
      */
     public static float[] hydraulicErode(float[] grid, int size, long seed, HydraulicParams params) {
+        return hydraulicErode(grid, size, seed, params, 0);
+    }
+
+    /**
+     * 水滴侵蚀：drops 个水滴从随机点出发，沿最陡下降方向走 maxSteps 步，
+     * 携带沉积物（容量 ∝ 沿坡下降量×速度），超容沉积、欠容侵蚀。
+     *
+     * @param border 冻结边界宽度：border 内的格永不修改（水滴在该区域只读不写），
+     *               保证跨区块一致（边界格值 = raw）。
+     * @see #hydraulicErode(float[], int, long, HydraulicParams)
+     */
+    public static float[] hydraulicErode(float[] grid, int size, long seed, HydraulicParams params, int border) {
         float[] h = grid.clone();
         Random rng = new Random(seed);
         final float gravity = 4f; // 速度累加系数（非参数，Lague 默认 4）
@@ -118,7 +147,9 @@ public final class TerrainErosion {
             float sediment = 0f;
             for (int s = 0; s < params.maxSteps(); s++) {
                 int xi = (int) px, zi = (int) pz;
-                if (xi < 1 || xi >= size - 1 || zi < 1 || zi >= size - 1) break;
+                // 冻结边界（border 内格不修改）+ 梯度邻域保护（xi-1/zi-1 需 ≥0 → xi,zi ≥ max(1,border)）
+                int lo = Math.max(1, border);
+                if (xi < lo || xi >= size - lo || zi < lo || zi >= size - lo) break;
                 // 有限差分梯度（指向上坡方向）
                 float gx = h[zi * size + xi + 1] - h[zi * size + xi - 1];
                 float gz = h[(zi + 1) * size + xi] - h[(zi - 1) * size + xi];
@@ -132,7 +163,7 @@ public final class TerrainErosion {
                 if (vlen < 1e-6f) break;
                 vx /= vlen; vz /= vlen;
                 float nx = px + vx, nz = pz + vz;
-                if (nx < 0 || nx >= size - 1 || nz < 0 || nz >= size - 1) break;
+                if (nx < 1 || nx >= size - 1 || nz < 1 || nz >= size - 1) break;
                 // 新旧位置高度差（双线性采样）：Δh = 新 - 旧（下坡为负）
                 float oldH = sampleBilinear(h, size, px, pz);
                 float newH = sampleBilinear(h, size, nx, nz);
@@ -148,11 +179,14 @@ public final class TerrainErosion {
                     sediment -= deposit;
                     addDeposit(h, size, px, pz, deposit);
                 } else {
-                    // 侵蚀：不超过容量缺口×速率，且不超过 -Δh（不在身后挖坑）
-                    float erode = Math.min((capacity - sediment) * params.erosionRate(), -deltaH);
-                    erode = Math.max(0f, erode);
-                    sediment += erode;
-                    erodeAt(h, size, xi, zi, erode);
+                    // 侵蚀：不低于最小坡度阈值且非局部盆地（防止汇聚点被挖穿成悬崖），
+                    // 且不超过容量缺口×速率，且不超过 -Δh（不在身后挖坑）
+                    if (-deltaH >= params.minErosionSlope() && !isBasin(h, size, xi, zi)) {
+                        float erode = Math.min((capacity - sediment) * params.erosionRate(), -deltaH);
+                        erode = Math.max(0f, erode);
+                        sediment += erode;
+                        erodeAt(h, size, xi, zi, erode);
+                    }
                 }
                 px = nx; pz = nz;
                 // 速度：下坡加速（-Δh>0），上坡减速；钳制非负防 NaN
@@ -162,9 +196,10 @@ public final class TerrainErosion {
         return h;
     }
 
-    /** 双线性采样网格高度（px,pz 可为小数） */
+    /** 双线性采样网格高度（px,pz 可为小数；x,z 钳制到 [1, size-2] 防越界） */
     private static float sampleBilinear(float[] grid, int size, float px, float pz) {
-        int x = (int) px, z = (int) pz;
+        int x = Math.max(1, Math.min(size - 2, (int) px));
+        int z = Math.max(1, Math.min(size - 2, (int) pz));
         float fx = px - x, fz = pz - z;
         int idx = z * size + x;
         float h00 = grid[idx];
@@ -175,9 +210,10 @@ public final class TerrainErosion {
              + h01 * (1f - fx) * fz + h11 * fx * fz;
     }
 
-    /** 在水滴当前格 4 节点按双线性权重沉积（填小坑） */
+    /** 在水滴当前格 4 节点按双线性权重沉积（填小坑；x,z 钳制到 [1, size-2] 防越界） */
     private static void addDeposit(float[] grid, int size, float px, float pz, float amount) {
-        int x = (int) px, z = (int) pz;
+        int x = Math.max(1, Math.min(size - 2, (int) px));
+        int z = Math.max(1, Math.min(size - 2, (int) pz));
         float fx = px - x, fz = pz - z;
         int idx = z * size + x;
         grid[idx] += amount * (1f - fx) * (1f - fz);
@@ -190,5 +226,16 @@ public final class TerrainErosion {
     private static void erodeAt(float[] grid, int size, int x, int z, float amount) {
         int idx = z * size + x;
         grid[idx] = Math.max(grid[idx] - amount, TerrainConfig.MIN_LAND_Y);
+    }
+
+    /** 局部盆地检测：当前格高度 ≤ 所有 4 邻域（含微小容差），水流汇聚点不继续挖穿 */
+    private static boolean isBasin(float[] grid, int size, int x, int z) {
+        int idx = z * size + x;
+        float h = grid[idx];
+        if (x > 0 && grid[idx - 1] < h) return false;
+        if (x + 1 < size && grid[idx + 1] < h) return false;
+        if (z > 0 && grid[idx - size] < h) return false;
+        if (z + 1 < size && grid[idx + size] < h) return false;
+        return true;
     }
 }
