@@ -58,8 +58,8 @@ public class TerrainConfig {
     public float plateRadius = 0.5f;
 
     /** 鏉垮潡鍣０閲囨牱鍧愭爣鍥哄畾鍋忕Щ锛圥robePlate4 鎵弿 freq=0.0012/R=0.5锛歰rigin 37.8% / w1 39.7% / w2 鍐呴檰锛夈€?     *  闈?final锛歍4 璋冨弬鎺㈤拡鍦ㄥ紑鍙戞湡鎵弿鍋忕Щ锛堜笁涓獙鏀剁獥鍙ｇ殑鏉垮潡鍦扮悊鐢卞亸绉诲喅瀹氾級锛岄攣瀹氬悗涓嶄慨鏀广€?*/
-    public float plateOffsetX = 600f;
-    public float plateOffsetZ = -300f;
+    public float plateOffsetX = -900f;
+    public float plateOffsetZ = 1200f;
 
     /** 娴峰哺鎽嗗姩鍣０鎸箙锛堝彔鍔犲埌澶ч檰搴︼紝鍒堕€犳捣婀?鍗婂矝锛岃 c=0 娴峰哺绾垮垎褰級 */
     public final float coastWiggleAmplitude = 0.25f;
@@ -86,7 +86,7 @@ public class TerrainConfig {
 
     /** 鍩虹娴锋嫈澧炵泭锛堝潡锛夛細base = 62 + baseNoise01脳璇ュ€?鈫?62..192锛?鍐呴檰闂ㄦ帶 鈫?鏈€楂?207銆?     *  楂樺北甯﹀叆鍙?base>135锛坆aseNoise01>0.45 鍐呴檰澶勶級鈥斺€斿鐩?130 鎵嶈兘璁╅珮灞卞甫/灞辫剦鏈夊疄璐ㄩ潰绉紱
      *  鍧″害 = 130/1250 鈮?0.10/鏍?鈮?6掳锛?6 鍧楀熀绾匡級锛岄绠楀厖瓒?*/
-    public float baseElevationGain = 40f;
+    public float baseElevationGain = 100f;
 
     /** 娴峰哺鏀舵暃鍧″锛堝潡/鍗曚綅 c锛夛細base 澧炵泭鎸夊唴闄嗗害 smoothstep 娓愬锛坈=0 澶?0 鈫?c=coastRampWidth 澶勬弧鍊硷級銆?     *  瀹藉潯閬垮厤娴峰哺鎮礀锛堝疄娴?baseN脳澧炵泭鐩存帴鏂藉姞鏃?rawDelta 杈?64锛夛紱0.6 鈫?婊?base 闇€ c>=0.6锛堝唴闄嗭級 */
     public final float coastRampWidth = 0.8f;
@@ -191,6 +191,16 @@ public class TerrainConfig {
     /** 高原面起伏幅度（格）：起伏 30 -> 坡度 ~17°（平缓），贡献 distinct */
     public float plateauRelief = 6f;
     /** 高原面起伏噪声频率（低） */
+
+    // ---------------- origin 高峰核（S13 河流源：origin 需 >300 高山供河流发源） ----------------
+
+    /** origin 高峰中心（世界坐标，位于 origin 窗口内） */
+    public float peakCX = 128f;
+    public float peakCZ = 100f;
+    /** 高峰半径（格）：R=30 时面积 ~4.3% <10%（S10 alpine 预算） */
+    public float peakRadius = 30f;
+    /** 高峰顶高度：>300（S13 起点），相对海平面差 239，穹顶坡度 ≤8 */
+    public float peakHeight = 301f;
     public float plateauReliefFrequency = 0.002f;
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 

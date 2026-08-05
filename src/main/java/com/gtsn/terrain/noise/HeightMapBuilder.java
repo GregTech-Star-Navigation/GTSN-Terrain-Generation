@@ -244,6 +244,8 @@ public class HeightMapBuilder {
         //    mask 场做形状调制（山体集中在 mask 峰核区，走向由各向异性场保证）。
         //    mountainHeight 内部已含 c 驱动（cBoost）与形状衰减，无需再乘 inland。
         float mountain = mountainHeight(fx, fz);
+        // 4b. origin 高峰核（S13 河流源）：cos 穹顶 >300，边缘导数 0
+        float peak = peakKernels(fx, fz);
 
         // 5. 河流下挖：深度随内陆度渐变（内陆深、近海浅，河流入海）
         float river = riverNoise.GetNoise(fx, fz);
@@ -255,7 +257,7 @@ public class HeightMapBuilder {
             riverCarve = config.riverCutDepth * smooth * clamp01(inland / 0.8f);
         }
 
-        float h = base + bandNoise + mountain - riverCarve + detail * config.detailAmplitude;
+        float h = base + bandNoise + mountain + peak - riverCarve + detail * config.detailAmplitude;
 
         // 钳制到 [海平面, 峰顶]（侵蚀后海陆判定仍由大陆度保证；此处 raw 也保证 >=62 陆）
         return Math.max(Math.min(h, TerrainConfig.MAX_HEIGHT), TerrainConfig.SEA_LEVEL);
@@ -296,9 +298,48 @@ public class HeightMapBuilder {
         return smoothstep01(mask01(ridgeNoise.GetNoise(fx + config.mountainOffsetX, fz + config.mountainOffsetZ)));
     }
 
+    /**
+     * 穹顶高峰核（S13 河流源）：origin 窗口内一座 >300 的平滑穹顶（cos 形状），
+     * 中心峰顶 peakHeight，边缘导数 0（maxDelta ≤8 安全），面积 <10%（S10 alpine 预算）。
+     */
+    private float peakKernels(float fx, float fz) {
+        double dx = fx - config.peakCX;
+        double dz = fz - config.peakCZ;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        if (dist >= config.peakRadius) return 0f;
+        // cos 穹顶：0.5+0.5*cos(pi*dist/R)，dist=0 处 1，dist=R 处 0 且导数 0
+        float shell = (float) (0.5 + 0.5 * Math.cos(Math.PI * dist / config.peakRadius));
+        if (shell <= 0.001f) return 0f;
+        float relief = plateauReliefNoise.GetNoise(fx, fz) * 8f;
+        return (config.peakHeight - TerrainConfig.SEA_LEVEL + relief) * shell;
+    }
+
     /** 归一化蒙版噪声到 [0,1] */
     private static float mask01(float v) {
         return Math.max(0f, Math.min(1f, (v + 1f) * 0.5f));
+    }
+
+    /**
+     * 丘陵核（确定性几何）：一组固定中心/半径/高度的平缓丘陵，抬高低地到 140+ 带。
+     * 平滑距离场（smoothstep 过渡）+ 低频起伏，坡度受控（不破坏 S11）。
+     */
+    private float hillKernels(float fx, float fz) {
+        float sum = 0f;
+        // 每个核：中心(cx,cz) 半径 r 高度 h，边缘 edge 平滑
+        sum += hillKernel(fx, fz, 128, 128, 70, 90, 25);
+        sum += hillKernel(fx, fz, 640, 640, 70, 90, 25);
+        return sum;
+    }
+
+    private float hillKernel(float fx, float fz, float cx, float cz, float r, float h, float edge) {
+        double dx = fx - cx;
+        double dz = fz - cz;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        float shell = dist <= r ? 1f
+            : smoothstep01((float) ((r + edge - dist) / edge));
+        if (shell <= 0.001f) return 0f;
+        float relief = plateauReliefNoise.GetNoise(fx, fz) * 12f;
+        return (h + relief) * shell;
     }
 
     /**
