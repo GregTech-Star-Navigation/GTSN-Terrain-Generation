@@ -81,9 +81,68 @@ public final class HeightCache {
         }
     }
 
-    /** 计算一个区块：raw 采样 32×32 → 热侵蚀 + 水滴侵蚀 → 返回含边界网格 */
+    /**
+     * 计算一个区块：raw 采样 32×32（16×16 内部 + 8 边界）→ 热侵蚀 + 水滴侵蚀 → 返回含边界网格。
+     *
+     * <p>一致性：raw 采样是纯函数（同种子同坐标恒定），侵蚀是纯函数且只读本块 32×32 网格内
+     * （含 8 格边界 raw 值，边界值来自邻居区块的 raw 采样而非侵蚀结果）→ 无跨块串扰。
+     * 影响半径 = 侵蚀迭代数/水滴步数 <= 边界 8，内部 16×16 侵蚀时邻域全部落在本块网格内。
+     */
     private float[] computeChunk(int cx, int cz) {
-        throw new UnsupportedOperationException("M6-GREEN: HeightCache.computeChunk 未实现");
+        int gridSize = CHUNK_SIZE + 2 * border;
+        float[] grid = new float[gridSize * gridSize];
+        int worldX0 = cx * CHUNK_SIZE - border;
+        int worldZ0 = cz * CHUNK_SIZE - border;
+        for (int gz = 0; gz < gridSize; gz++) {
+            for (int gx = 0; gx < gridSize; gx++) {
+                grid[gz * gridSize + gx] = rawHeight.rawHeight(worldX0 + gx, worldZ0 + gz);
+            }
+        }
+        // 侵蚀（纯内存迭代）。talus/迭代数/水滴参数由 HeightMapBuilder 配置注入（见 configureErosion）。
+        TerrainErosion.HydraulicParams hp = fillParams();
+        grid = TerrainErosion.thermalErode(grid, gridSize, this.talus, this.thermalIterations);
+        grid = TerrainErosion.hydraulicErode(grid, gridSize, seedFor(cx, cz), hp);
+        return grid;
+    }
+
+    /** 侵蚀参数（由 HeightMapBuilder 配置注入；默认值供纯缓存机制测试用） */
+    private float talus = 4f;
+    private int thermalIterations = 8;
+    private int dropsPerChunk = 24;
+    private int maxSteps = 8;
+    private float inertia = 0.05f;
+    private float sedimentCapacityFactor = 4f;
+    private float minSedimentCapacity = 0.01f;
+    private float erosionRate = 0.3f;
+    private float depositionRate = 0.1f;
+    private int erosionRadius = 3;
+
+    /** 注入侵蚀参数（HeightMapBuilder 构造时调用） */
+    void configureErosion(float talus, int thermalIterations, int dropsPerChunk, int maxSteps,
+                          float inertia, float sedimentCapacityFactor, float minSedimentCapacity,
+                          float erosionRate, float depositionRate, int erosionRadius) {
+        this.talus = talus;
+        this.thermalIterations = thermalIterations;
+        this.dropsPerChunk = dropsPerChunk;
+        this.maxSteps = maxSteps;
+        this.inertia = inertia;
+        this.sedimentCapacityFactor = sedimentCapacityFactor;
+        this.minSedimentCapacity = minSedimentCapacity;
+        this.erosionRate = erosionRate;
+        this.depositionRate = depositionRate;
+        this.erosionRadius = erosionRadius;
+    }
+
+    /** 水滴参数组装 */
+    private TerrainErosion.HydraulicParams fillParams() {
+        return new TerrainErosion.HydraulicParams(
+            dropsPerChunk, maxSteps, inertia, sedimentCapacityFactor, minSedimentCapacity,
+            erosionRate, depositionRate, erosionRadius);
+    }
+
+    /** 区块种子：确定性（同区块必然同 RNG 序列） */
+    private static long seedFor(int cx, int cz) {
+        return (cx * 73856093L) ^ (cz * 19349663L) ^ 0x5DEECE66DL;
     }
 
     /** LRU 访问记录 */
