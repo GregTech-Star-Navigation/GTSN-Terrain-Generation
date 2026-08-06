@@ -191,9 +191,9 @@ public class TerrainConfig {
     /** 高原顶高度（方块 Y） */
     public float plateauHeight = 440f;
     /** 高原面起伏幅度（格）：起伏 30 -> 坡度 ~17°（平缓），贡献 distinct */
-    public float plateauRelief = 20f;
+    public float plateauRelief = 10f;
     /** 核顶高频小起伏（补 S5 distinct，仅核内面积小不破坏 S11） */
-    public float kernelDetailAmplitude = 4f;
+    public float kernelDetailAmplitude = 1.5f;
     public float kernelDetailFrequency = 0.03f;
     /** 第二山脊核中心（错开位置，双峰链，贡献更多高度级 S5 distinct） */
     public float plateauCX2 = -820f;
@@ -205,13 +205,15 @@ public class TerrainConfig {
 
     // ---------------- origin 高峰核（S13 河流源：origin 需 >300 高山供河流发源） ----------------
 
+    /** origin 高峰长轴（格） */
+    public float peakLength = 45f;
     /** origin 高峰中心（世界坐标，位于 origin 窗口内） */
-    public float peakCX = 128f;
-    public float peakCZ = 100f;
+    public float peakCX = 308f;
+    public float peakCZ = 60f;
     /** 高峰半径（格）：R=30 时面积 ~4.3% <10%（S10 alpine 预算） */
-    public float peakRadius = 30f;
+    public float peakRadius = 45f;
     /** 高峰顶高度：>300（S13 起点），相对海平面差 239，穹顶坡度 ≤8 */
-    public float peakHeight = 301f;
+    public float peakHeight = 460f;
     public float plateauReliefFrequency = 0.0005f;
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 

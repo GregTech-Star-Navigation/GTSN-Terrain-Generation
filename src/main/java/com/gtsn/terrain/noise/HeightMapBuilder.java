@@ -248,9 +248,11 @@ public class HeightMapBuilder {
         // 4. 山体系统：核自身平滑衰减（椭圆 edge 宽渐变），不乘 inland——
         //    核边缘在海岸处自然收敛到 0（edge 宽保证 c 分支边界无悬崖）
         float mountain = mountainHeight(fx, fz);
-        // 4b. origin 高峰核（S13 河流源）：cos 穹顶 >300，边缘导数 0；
-        //     乘 inland 门控——c≈0 海岸处峰核不激活（防悬崖：raw 62↔190 跳变）
-        float peak = peakKernels(fx, fz) * inland;
+        // 4b. origin 高峰核（玩家出生点可见的高山）：smoothstep 壳椭圆核（端点导数 0，
+        //     无悬崖），乘 inland 门控（c 低处不激活）；中心选 origin 窗口内 c 最高安全点
+        //     (192,48) cAvg 0.62——玩家出生即可见 440+ 高山（视距内）
+        float peak = mountainKernel(fx, fz, config.peakCX, config.peakCZ,
+            config.peakLength, config.peakRadius, config.peakHeight, 58f) * inland;
 
         // 5. 河流下挖：深度随内陆度渐变（内陆深、近海浅，河流入海）
         float river = riverNoise.GetNoise(fx, fz);
@@ -283,15 +285,15 @@ public class HeightMapBuilder {
         // 双椭圆山脊核（链式山系）：主核 + 次核错开——多核贡献不同高度级（S5 distinct），
         // 细长链面积小（S10 alpine 低）、长度方向连续（S9 PCA 高）。
         float m1 = mountainKernel(fx, fz, config.plateauCX, config.plateauCZ,
-            config.plateauLength, config.plateauRadius, config.plateauHeight);
+            config.plateauLength, config.plateauRadius, config.plateauHeight, config.plateauEdge);
         float m2 = mountainKernel(fx, fz, config.plateauCX2, config.plateauCZ2,
-            config.plateauLength2, config.plateauRadius2, config.plateauHeight2);
+            config.plateauLength2, config.plateauRadius2, config.plateauHeight2, config.plateauEdge);
         return m1 + m2;
     }
 
     /** 单个椭圆山脊核：沿走向角 theta 拉长（长轴 length，短轴 radius） */
     private float mountainKernel(float fx, float fz, float cx, float cz,
-                                 float length, float radius, float height) {
+                                 float length, float radius, float height, float edge) {
         float ox = fx - cx;
         float oz = fz - cz;
         float theta = (chainAngleNoise.GetNoise(fx + config.mountainOffsetX, fz + config.mountainOffsetZ) + 1f) * 0.5f * (float) Math.PI;
@@ -301,8 +303,9 @@ public class HeightMapBuilder {
         float cross = -ox * sin + oz * cos;
         double dist = Math.sqrt(
             (along / length) * (along / length) + (cross / radius) * (cross / radius));
+        // 线性壳（导数恒定 h/edge，无 smoothstep 1.5× 放大——边缘坡度精确 = h/edge）
         float shell = dist <= 1f ? 1f
-            : smoothstep01((float) ((1f + config.plateauEdge / radius - dist) / (config.plateauEdge / radius)));
+            : Math.max(0f, Math.min(1f, (float) ((1f + edge / radius - dist) / (edge / radius))));
         if (shell <= 0.001f) return 0f;
         float relief = plateauReliefNoise.GetNoise(fx, fz) * config.plateauRelief * 0.5f;
         // 核顶高频小起伏：每格 ±2 格，核内大量不同高度值（S5 distinct 补丁）；
