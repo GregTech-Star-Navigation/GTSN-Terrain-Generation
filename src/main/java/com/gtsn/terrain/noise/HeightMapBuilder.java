@@ -218,7 +218,7 @@ public class HeightMapBuilder {
         // 海岸 c=0 处 base=62（无悬崖），c 0→0.6 为海岸过渡带。
         // 内陆门控 baseRamp：线性斜坡（导数 0.83/单位 c vs smoothstep 1.5——平滑过渡无坡度尖峰；
         // c=0 处 base=62 无悬崖，c>=1.2 内陆全强度。smoothstep 导数放大 dc/dx×增益 = w1 陆地 38° 坡主源）
-        float baseRamp = Math.min(1f, Math.max(0f, c / 1.2f));
+        float baseRamp = Math.min(1f, Math.max(0f, c / 0.8f));
         float base = TerrainConfig.SEA_LEVEL + baseN01 * config.baseElevationGain * baseRamp
             + config.inlandLift * smoothstep01(c / 1.0f);
         // 内陆门控（山体激活）：c<0.15 无山（海岸/近岸平原），c>0.6 全强度。

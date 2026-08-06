@@ -86,7 +86,7 @@ public class TerrainConfig {
 
     /** 鍩虹娴锋嫈澧炵泭锛堝潡锛夛細base = 62 + baseNoise01脳璇ュ€?鈫?62..192锛?鍐呴檰闂ㄦ帶 鈫?鏈€楂?207銆?     *  楂樺北甯﹀叆鍙?base>135锛坆aseNoise01>0.45 鍐呴檰澶勶級鈥斺€斿鐩?130 鎵嶈兘璁╅珮灞卞甫/灞辫剦鏈夊疄璐ㄩ潰绉紱
      *  鍧″害 = 130/1250 鈮?0.10/鏍?鈮?6掳锛?6 鍧楀熀绾匡級锛岄绠楀厖瓒?*/
-    public float baseElevationGain = 100f;
+    public float baseElevationGain = 60f;
 
     /** 娴峰哺鏀舵暃鍧″锛堝潡/鍗曚綅 c锛夛細base 澧炵泭鎸夊唴闄嗗害 smoothstep 娓愬锛坈=0 澶?0 鈫?c=coastRampWidth 澶勬弧鍊硷級銆?     *  瀹藉潯閬垮厤娴峰哺鎮礀锛堝疄娴?baseN脳澧炵泭鐩存帴鏂藉姞鏃?rawDelta 杈?64锛夛紱0.6 鈫?婊?base 闇€ c>=0.6锛堝唴闄嗭級 */
     public final float coastRampWidth = 0.8f;
@@ -183,13 +183,13 @@ public class TerrainConfig {
     public float plateauCX = -940f;
     public float plateauCZ = 20f;
     /** 高原半径（格）：R=80 -> 高原面占 w1 窗口 ~39%（S10 低地 61% 卡线内） */
-    public float plateauRadius = 20f;
+    public float plateauRadius = 17f;
     /** 椭圆山脊长轴（格）：沿走向角拉长——细长链面积小（S10）长度方向连续（S9） */
-    public float plateauLength = 160f;
+    public float plateauLength = 120f;
     /** 高原边缘过渡宽度（格）：edge=10 -> 陡崖环 ~7.7% 面积（steep30<15%） */
-    public float plateauEdge = 3f;
+    public float plateauEdge = 6f;
     /** 高原顶高度（方块 Y） */
-    public float plateauHeight = 400f;
+    public float plateauHeight = 440f;
     /** 高原面起伏幅度（格）：起伏 30 -> 坡度 ~17°（平缓），贡献 distinct */
     public float plateauRelief = 20f;
     /** 核顶高频小起伏（补 S5 distinct，仅核内面积小不破坏 S11） */
@@ -198,9 +198,9 @@ public class TerrainConfig {
     /** 第二山脊核中心（错开位置，双峰链，贡献更多高度级 S5 distinct） */
     public float plateauCX2 = -820f;
     public float plateauCZ2 = 180f;
-    public float plateauRadius2 = 12f;
-    public float plateauLength2 = 120f;
-    public float plateauHeight2 = 250f;
+    public float plateauRadius2 = 9f;
+    public float plateauLength2 = 100f;
+    public float plateauHeight2 = 330f;
     /** 高原面起伏噪声频率（低） */
 
     // ---------------- origin 高峰核（S13 河流源：origin 需 >300 高山供河流发源） ----------------
@@ -216,7 +216,7 @@ public class TerrainConfig {
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 
     /** 鐑镜铓€浼戞瑙掞紙鏍?鏍硷級锛氱浉閭诲潯搴﹁秴杩囪鍊煎垯鐗╄川鍚戜綆澶勬惉杩愶紙talus 鏉惧紱锛?*/
-    public final float erosionTalus = 12f;
+    public final float erosionTalus = 8f;
 
     /** 鐑镜铓€杩唬娆℃暟锛?= 缂撳瓨杈圭晫 8锛屼繚璇佽法鍧椾竴鑷达級 */
     public final int erosionIterations = 8;
