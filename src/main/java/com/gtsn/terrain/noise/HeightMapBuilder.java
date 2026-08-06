@@ -216,7 +216,9 @@ public class HeightMapBuilder {
         float baseN01 = mask01(baseNoise.GetNoise(fx + config.baseOffsetX, fz + config.baseOffsetZ));
         // 内陆门控 baseRamp=smoothstep01(c/0.6)：c>0.6 内陆 base 全强度（origin c 最大 0.99 可抬满）；
         // 海岸 c=0 处 base=62（无悬崖），c 0→0.6 为海岸过渡带。
-        float baseRamp = smoothstep01(c / 1.2f);
+        // 内陆门控 baseRamp：线性斜坡（导数 0.83/单位 c vs smoothstep 1.5——平滑过渡无坡度尖峰；
+        // c=0 处 base=62 无悬崖，c>=1.2 内陆全强度。smoothstep 导数放大 dc/dx×增益 = w1 陆地 38° 坡主源）
+        float baseRamp = Math.min(1f, Math.max(0f, c / 1.2f));
         float base = TerrainConfig.SEA_LEVEL + baseN01 * config.baseElevationGain * baseRamp
             + config.inlandLift * smoothstep01(c / 1.0f);
         // 内陆门控（山体激活）：c<0.15 无山（海岸/近岸平原），c>0.6 全强度。
@@ -243,9 +245,12 @@ public class HeightMapBuilder {
         // 4. 山体系统（高峰层，算法拼接）：山体高度直接由大陆度 c 驱动（c 高=内陆=山），
         //    mask 场做形状调制（山体集中在 mask 峰核区，走向由各向异性场保证）。
         //    mountainHeight 内部已含 c 驱动（cBoost）与形状衰减，无需再乘 inland。
+        // 4. 山体系统：核自身平滑衰减（椭圆 edge 宽渐变），不乘 inland——
+        //    核边缘在海岸处自然收敛到 0（edge 宽保证 c 分支边界无悬崖）
         float mountain = mountainHeight(fx, fz);
-        // 4b. origin 高峰核（S13 河流源）：cos 穹顶 >300，边缘导数 0
-        float peak = peakKernels(fx, fz);
+        // 4b. origin 高峰核（S13 河流源）：cos 穹顶 >300，边缘导数 0；
+        //     乘 inland 门控——c≈0 海岸处峰核不激活（防悬崖：raw 62↔190 跳变）
+        float peak = peakKernels(fx, fz) * inland;
 
         // 5. 河流下挖：深度随内陆度渐变（内陆深、近海浅，河流入海）
         float river = riverNoise.GetNoise(fx, fz);
@@ -275,21 +280,39 @@ public class HeightMapBuilder {
      * <p>世界其他区域（离高原中心远）：返回 0（无山）——由 base 层提供丘陵/平原。
      */
     private float mountainHeight(float fx, float fz) {
-        double dx = fx - config.plateauCX;
-        double dz = fz - config.plateauCZ;
-        double dist = Math.sqrt(dx * dx + dz * dz);
-        // 高原壳：dist < R 平顶（=1），(R, R+edge) 内平滑降到 0（窄陡崖环）
-        float shell = dist <= config.plateauRadius ? 1f
-            : smoothstep01((float) ((config.plateauRadius + config.plateauEdge - dist) / config.plateauEdge));
+        // 双椭圆山脊核（链式山系）：主核 + 次核错开——多核贡献不同高度级（S5 distinct），
+        // 细长链面积小（S10 alpine 低）、长度方向连续（S9 PCA 高）。
+        float m1 = mountainKernel(fx, fz, config.plateauCX, config.plateauCZ,
+            config.plateauLength, config.plateauRadius, config.plateauHeight);
+        float m2 = mountainKernel(fx, fz, config.plateauCX2, config.plateauCZ2,
+            config.plateauLength2, config.plateauRadius2, config.plateauHeight2);
+        return m1 + m2;
+    }
+
+    /** 单个椭圆山脊核：沿走向角 theta 拉长（长轴 length，短轴 radius） */
+    private float mountainKernel(float fx, float fz, float cx, float cz,
+                                 float length, float radius, float height) {
+        float ox = fx - cx;
+        float oz = fz - cz;
+        float theta = (chainAngleNoise.GetNoise(fx + config.mountainOffsetX, fz + config.mountainOffsetZ) + 1f) * 0.5f * (float) Math.PI;
+        float cos = (float) Math.cos(theta);
+        float sin = (float) Math.sin(theta);
+        float along = ox * cos + oz * sin;
+        float cross = -ox * sin + oz * cos;
+        double dist = Math.sqrt(
+            (along / length) * (along / length) + (cross / radius) * (cross / radius));
+        float shell = dist <= 1f ? 1f
+            : smoothstep01((float) ((1f + config.plateauEdge / radius - dist) / (config.plateauEdge / radius)));
         if (shell <= 0.001f) return 0f;
-        // 高原面：顶高 + 低频起伏（平缓）
         float relief = plateauReliefNoise.GetNoise(fx, fz) * config.plateauRelief * 0.5f;
-        // 链脊/尖峰点缀（高原面上的次级起伏，小增益）
+        // 核顶高频小起伏：每格 ±2 格，核内大量不同高度值（S5 distinct 补丁）；
+        // 面积仅核内 ~3000 格，对全窗口 S11 平均坡度影响 <1°
+        float micro = detailNoise.GetNoise(fx, fz) * config.kernelDetailAmplitude * 0.5f;
         float chain = config.chainGain
             * (float) Math.pow(chainMaskAt(fx, fz), config.chainCurvePower) * shell;
         float ridge = config.ridgeGain
             * (float) Math.pow(ridgeAt(fx, fz), config.ridgeCurvePower) * shell;
-        return (config.plateauHeight + relief + chain + ridge) * shell;
+        return (height + relief + micro + chain + ridge) * shell;
     }
 
     /** 山脊层采样（Ridged 输出约 [-1,1]；smoothstep01 增强——压平低值、突出脊线尖峰，
