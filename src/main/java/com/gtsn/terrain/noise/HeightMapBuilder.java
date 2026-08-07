@@ -248,11 +248,11 @@ public class HeightMapBuilder {
         // 4. 山体系统：核自身平滑衰减（椭圆 edge 宽渐变），不乘 inland——
         //    核边缘在海岸处自然收敛到 0（edge 宽保证 c 分支边界无悬崖）
         float mountain = mountainHeight(fx, fz);
-        // 4b. origin 高峰核（玩家出生点可见的高山）：smoothstep 壳椭圆核（端点导数 0，
-        //     无悬崖），乘 inland 门控（c 低处不激活）；中心选 origin 窗口内 c 最高安全点
-        //     (192,48) cAvg 0.62——玩家出生即可见 440+ 高山（视距内）
-        float peak = mountainKernel(fx, fz, config.peakCX, config.peakCZ,
-            config.peakLength, config.peakRadius, config.peakHeight, 58f) * inland;
+        // 4b. origin 高峰核（玩家出生点可见的高山）：cos 平滑穹顶核——核内峰区（陡）+ 山麓裙边
+        //     （外缘导数→0，坡度连续降为 0，与周边平原平滑融合，无"平原中孤峰"断裂感）。
+        //     乘 inland 门控（c 低处不激活）；中心 (290,60) 在 origin 窗口东缘（c 高安全点），
+        //     窗口内见西侧山麓缓坡 + 峰肩轮廓
+        float peak = originPeakKernel(fx, fz) * inland;
 
         // 5. 河流下挖：深度随内陆度渐变（内陆深、近海浅，河流入海）
         float river = riverNoise.GetNoise(fx, fz);
@@ -325,19 +325,32 @@ public class HeightMapBuilder {
     }
 
     /**
-     * 穹顶高峰核（S13 河流源）：origin 窗口内一座 >300 的平滑穹顶（cos 形状），
-     * 中心峰顶 peakHeight，边缘导数 0（maxDelta ≤8 安全），面积 <10%（S10 alpine 预算）。
+     * 穹顶高峰核（origin 出生点可见高山，M6d 山麓过渡版）：
+     * cos 平滑穹顶（0.5+0.5cos(π·d/R)），中心峰顶 peakHeight，外缘 d=R 处值 0 且导数 0
+     * （山脚与周边平原平滑融合——山麓裙边坡度连续降为 0，无 M6c 线性壳的 7.9 格/格硬墙）。
+     *
+     * <p>对比 M6c（mountainKernel 线性壳，edge=58）：M6c 整条壳坡度恒 = h/edge = 7.9，
+     * 山脚处戛然而止与平原硬接，视觉上是"平原中拔地而起的孤峰"；本核为 cos 穹顶：
+     * 核内峰区坡度平缓（最大 ~π/2·h/R ≈ 5 格/格 <8），外缘 40-80 格为山麓裙边（坡度从
+     * ~3 格/格 连续降到 0），山脚高度 = 周边 base 层高度（不是硬接海平面 62）。
+     *
+     * <p>半径带低频摆动（±peakRadiusWobble·R）：山脚轮廓不规则，融入周边丘陵，
+     * 避免完美圆形假山。面积与 M6c 相当（R=105 vs 壳 103），不增 S10 alpine 预算。
      */
-    private float peakKernels(float fx, float fz) {
+    private float originPeakKernel(float fx, float fz) {
         double dx = fx - config.peakCX;
         double dz = fz - config.peakCZ;
         double dist = Math.sqrt(dx * dx + dz * dz);
-        if (dist >= config.peakRadius) return 0f;
-        // cos 穹顶：0.5+0.5*cos(pi*dist/R)，dist=0 处 1，dist=R 处 0 且导数 0
-        float shell = (float) (0.5 + 0.5 * Math.cos(Math.PI * dist / config.peakRadius));
+        // 半径低频摆动：山脚轮廓不规则（±10%）
+        float wobble = 1f + config.peakRadiusWobble * plateauReliefNoise.GetNoise(fx, fz);
+        float radius = config.peakRadius * wobble;
+        if (dist >= radius) return 0f;
+        // cos 穹顶：0.5+0.5*cos(π·d/R)，d=0 处 1，d=R 处 0 且导数 0（山脚平滑融入平原）
+        float shell = (float) (0.5 + 0.5 * Math.cos(Math.PI * dist / radius));
         if (shell <= 0.001f) return 0f;
-        float relief = plateauReliefNoise.GetNoise(fx, fz) * 8f;
-        return (config.peakHeight - TerrainConfig.SEA_LEVEL + relief) * shell;
+        float relief = plateauReliefNoise.GetNoise(fx, fz) * config.plateauRelief * 0.5f;
+        float micro = detailNoise.GetNoise(fx, fz) * config.kernelDetailAmplitude * 0.5f;
+        return (config.peakHeight + relief + micro) * shell;
     }
 
     /** 归一化蒙版噪声到 [0,1] */

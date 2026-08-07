@@ -203,17 +203,17 @@ public class TerrainConfig {
     public float plateauHeight2 = 330f;
     /** 高原面起伏噪声频率（低） */
 
-    // ---------------- origin 高峰核（S13 河流源：origin 需 >300 高山供河流发源） ----------------
+    // ---------------- origin 高峰核（玩家出生点可见高山，M6d 山麓过渡版） ----------------
 
-    /** origin 高峰长轴（格） */
-    public float peakLength = 45f;
-    /** origin 高峰中心（世界坐标，位于 origin 窗口内） */
-    public float peakCX = 308f;
+    /** origin 高峰中心（世界坐标，位于 origin 窗口东缘——窗口内见西侧山麓缓坡与峰肩） */
+    public float peakCX = 290f;
     public float peakCZ = 60f;
-    /** 高峰半径（格）：R=30 时面积 ~4.3% <10%（S10 alpine 预算） */
-    public float peakRadius = 45f;
-    /** 高峰顶高度：>300（S13 起点），相对海平面差 239，穹顶坡度 ≤8 */
-    public float peakHeight = 460f;
+    /** 高峰基底半径（格）：R=105（含山麓裙边），面积与 M6c 线性壳相当（S10 alpine 预算不变） */
+    public float peakRadius = 105f;
+    /** 高峰基底半径低频摆动幅度（占半径比例）：±10% 让山脚轮廓不规则，融入周边丘陵 */
+    public float peakRadiusWobble = 0.10f;
+    /** 高峰顶高度（方块 Y）：460→320 降高 + cos 穹顶（外缘导数 0），山脚平滑过渡不突兀 */
+    public float peakHeight = 320f;
     public float plateauReliefFrequency = 0.0005f;
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 
