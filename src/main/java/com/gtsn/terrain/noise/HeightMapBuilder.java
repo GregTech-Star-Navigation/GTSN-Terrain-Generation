@@ -255,6 +255,14 @@ public class HeightMapBuilder {
         float hillsGate = clamp01((c - 0.05f) / 0.90f);
         float rollingHills = hillField(fx, fz) * hillsGate;
 
+        // 4c. origin 可见高山（玩家出生点视野内 300-380 缓坡山，M6g）：cos 穹顶核——
+        //     核内峰区（坡度 ≤π/2·h/R≈2.6 格/格<8）+ 山麓裙边（外缘导数→0，
+        //     坡度连续降为 0，与周边丘陵平滑融合，无"平原中孤峰"断裂感）。
+        //     半径带低频摆动（±peakRadiusWobble·R）：山脚轮廓不规则，融入周边丘陵。
+        //     乘 inland 门控（c 低处不激活）；中心在 origin 窗口东缘高 c 区，
+        //     窗口内见西侧山麓缓坡 + 峰肩轮廓（视距 128-256 格内可见）。
+        float peak = originPeakKernel(fx, fz) * inland;
+
         // 5. 河流下挖：深度随内陆度渐变（内陆深、近海浅，河流入海）
         float river = riverNoise.GetNoise(fx, fz);
         float riverCarve = 0;
@@ -265,7 +273,7 @@ public class HeightMapBuilder {
             riverCarve = config.riverCutDepth * smooth * clamp01(inland / 0.8f);
         }
 
-        float h = base + bandNoise + mountain + rollingHills - riverCarve + detail * config.detailAmplitude;
+        float h = base + bandNoise + mountain + rollingHills + peak - riverCarve + detail * config.detailAmplitude;
 
         // 钳制到 [海平面, 峰顶]（侵蚀后海陆判定仍由大陆度保证；此处 raw 也保证 >=62 陆）
         return Math.max(Math.min(h, TerrainConfig.MAX_HEIGHT), TerrainConfig.SEA_LEVEL);
@@ -346,6 +354,30 @@ public class HeightMapBuilder {
         float relief = plateauReliefNoise.GetNoise(fx, fz) * 8f;
         float micro = detailNoise.GetNoise(fx, fz) * 1.5f * 0.5f;
         return (h + relief + micro) * shell;
+    }
+
+    /**
+     * 穹顶高山核（origin 出生点可见高山，M6g 山麓过渡版）：
+     * cos 平滑穹顶（0.5+0.5cos(π·d/R)），中心峰顶 peakHeight，外缘 d=R 处值 0 且导数 0
+     * （山脚与周边丘陵平滑融合——山麓裙边坡度连续降为 0，无硬墙）。
+     *
+     * <p>半径带低频摆动（±peakRadiusWobble·R）：山脚轮廓不规则，融入周边丘陵，
+     * 避免完美圆形假山。核内峰区坡度最大 ~π/2·h/R ≈ 2.6 格/格（h=175,R=105）< 8（S4），
+     * 山麓裙边 40-80 格外缘坡度从 ~1.5 格/格 连续降到 0，不突兀。
+     */
+    private float originPeakKernel(float fx, float fz) {
+        double dx = fx - config.peakCX;
+        double dz = fz - config.peakCZ;
+        double dist = Math.sqrt(dx * dx + dz * dz);
+        float wobble = 1f + config.peakRadiusWobble * plateauReliefNoise.GetNoise(fx, fz);
+        float radius = config.peakRadius * wobble;
+        if (dist >= radius) return 0f;
+        // cos 穹顶：0.5+0.5cos(π·d/R)，d=0 处 1，d=R 处 0 且导数 0（山脚平滑融入丘陵）
+        float shell = (float) (0.5 + 0.5 * Math.cos(Math.PI * dist / radius));
+        if (shell <= 0.001f) return 0f;
+        float relief = plateauReliefNoise.GetNoise(fx, fz) * config.plateauRelief * 0.5f;
+        float micro = detailNoise.GetNoise(fx, fz) * config.kernelDetailAmplitude * 0.5f;
+        return (config.peakHeight + relief + micro) * shell;
     }
 
     /** 归一化蒙版噪声到 [0,1] */

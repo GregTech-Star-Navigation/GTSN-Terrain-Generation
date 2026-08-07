@@ -58,8 +58,8 @@ public class TerrainConfig {
     public float plateRadius = 0.5f;
 
     /** 鏉垮潡鍣０閲囨牱鍧愭爣鍥哄畾鍋忕Щ锛圥robePlate4 鎵弿 freq=0.0012/R=0.5锛歰rigin 37.8% / w1 39.7% / w2 鍐呴檰锛夈€?     *  闈?final锛歍4 璋冨弬鎺㈤拡鍦ㄥ紑鍙戞湡鎵弿鍋忕Щ锛堜笁涓獙鏀剁獥鍙ｇ殑鏉垮潡鍦扮悊鐢卞亸绉诲喅瀹氾級锛岄攣瀹氬悗涓嶄慨鏀广€?*/
-    public float plateOffsetX = -900f;
-    public float plateOffsetZ = 1200f;
+    public float plateOffsetX = -810f;
+    public float plateOffsetZ = 1204f;
 
     /** 娴峰哺鎽嗗姩鍣０鎸箙锛堝彔鍔犲埌澶ч檰搴︼紝鍒堕€犳捣婀?鍗婂矝锛岃 c=0 娴峰哺绾垮垎褰級 */
     public final float coastWiggleAmplitude = 0.15f;
@@ -162,7 +162,7 @@ public class TerrainConfig {
 
     public final float detailFrequency = 0.06f;
     public final int detailOctaves = 3;
-    public final float detailAmplitude = 2.5f;
+    public final float detailAmplitude = 1.8f;
 
     // ---------------- 娌虫祦绯荤粺锛堟繁搴﹂殢鍐呴檰搴︽笎鍙橈紝娌虫祦鍏ユ捣锛?----------------
 
@@ -187,7 +187,7 @@ public class TerrainConfig {
     /** 椭圆山脊长轴（格）：沿走向角拉长——细长链面积小（S10）长度方向连续（S9） */
     public float plateauLength = 150f;
         /** 高原顶高度（方块 Y） */
-    public float plateauHeight = 390f;
+    public float plateauHeight = 420f;
     /** 高原面起伏幅度（格）：起伏 30 -> 坡度 ~17°（平缓），贡献 distinct */
     public float plateauRelief = 10f;
     /** 核顶高频小起伏（补 S5 distinct，仅核内面积小不破坏 S11） */
@@ -202,6 +202,18 @@ public class TerrainConfig {
     /** 高原面起伏噪声频率（低） */
 
     public float plateauReliefFrequency = 0.0005f;
+
+    // ---------------- origin 可见山核（M6g：出生点视野内可见的缓坡山） ----------------
+
+    /** origin 山核中心世界坐标：cos 穹顶 + 山麓裙边 + 半径摆动（M6d 经验参数 + M6g 调参） */
+    public float peakCX = 256f;
+    public float peakCZ = 8f;
+    /** 山核半径（格）：R 越大坡度越缓（坡度 ≈ π/2·h/R），R=105 → 峰区最大 ~2.6 格/格 <8 */
+    public float peakRadius = 105f;
+    /** 山核高度（方块）：峰顶 ≈ base + peakHeight（叠加在 base 层上）；base≈110 → 峰顶≈300-320 */
+    public float peakHeight = 175f;
+    /** 半径低频摆动（±peakRadiusWobble·R）：山脚轮廓不规则，融入周边丘陵 */
+    public float peakRadiusWobble = 0.10f;
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 
     /** 鐑镜铓€浼戞瑙掞紙鏍?鏍硷級锛氱浉閭诲潯搴﹁秴杩囪鍊煎垯鐗╄川鍚戜綆澶勬惉杩愶紙talus 鏉惧紱锛?*/
