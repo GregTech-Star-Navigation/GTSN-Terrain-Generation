@@ -62,19 +62,19 @@ public class TerrainConfig {
     public float plateOffsetZ = 1200f;
 
     /** 娴峰哺鎽嗗姩鍣０鎸箙锛堝彔鍔犲埌澶ч檰搴︼紝鍒堕€犳捣婀?鍗婂矝锛岃 c=0 娴峰哺绾垮垎褰級 */
-    public final float coastWiggleAmplitude = 0.25f;
+    public final float coastWiggleAmplitude = 0.15f;
 
     /** 娴峰哺鎽嗗姩鍣０棰戠巼锛堜腑棰戯級 */
     public final float coastWiggleFrequency = 0.004f;
 
     /** 娴峰簥娣卞害鍧″锛歞epth = 121脳smoothstep01(-c/scale)銆俢=-scale 澶勮揪婊℃繁锛?59锛夈€?     *  scale=1.0锛歝=-1 杈炬弧娣憋紱鏈€闄″瀵兼暟 121脳1.5/1.0 鈮?180/鍗曚綅 c 脳 dc/dblock鈮?.0017
      *  鈫?0.31/鏍?鈮?17掳锛屾捣宀稿甫绐勶紝涓嶇牬鍧忓潯搴﹂绠楋紙M5 鏇剧敤 0.4 涓?S4 閫氳繃锛?*/
-    public float oceanDepthScale = 6.0f;
+    public float oceanDepthScale = 3.0f;
 
     // ---------------- 鍩虹娴锋嫈灞傦紙瓒呬綆棰戠嫭绔嬪櫔澹伴┍鍔紝涓庢澘鍧楄В鑰︼級 ----------------
 
     /** 鍩虹娴锋嫈鍣０棰戠巼锛埼?1/f 鈮?1250 鍧楋紝瓒呬綆棰戯級锛氬喅瀹氬ぇ鑼冨洿骞冲師/涓橀櫟/灞遍簱鍩哄簳 */
-    public final float baseNoiseFrequency = 0.0008f;
+    public final float baseNoiseFrequency = 0.00025f;
 
     /** 鍩虹娴锋嫈鍣０閲囨牱鍧愭爣鍋忕Щ锛圱4 璋冨弬锛歸2(512,512) 鍘熻惤鍦ㄩ珮 baseN 鍖?鈫?鏃犱綆鍦?S10 鎸傦紱
      *  鍋忕Щ鎶婂钩鍘熸壂鍒伴獙鏀剁獥鍙ｏ紱閿佸畾鍚庝笉淇敼锛?*/
@@ -86,7 +86,7 @@ public class TerrainConfig {
 
     /** 鍩虹娴锋嫈澧炵泭锛堝潡锛夛細base = 62 + baseNoise01脳璇ュ€?鈫?62..192锛?鍐呴檰闂ㄦ帶 鈫?鏈€楂?207銆?     *  楂樺北甯﹀叆鍙?base>135锛坆aseNoise01>0.45 鍐呴檰澶勶級鈥斺€斿鐩?130 鎵嶈兘璁╅珮灞卞甫/灞辫剦鏈夊疄璐ㄩ潰绉紱
      *  鍧″害 = 130/1250 鈮?0.10/鏍?鈮?6掳锛?6 鍧楀熀绾匡級锛岄绠楀厖瓒?*/
-    public float baseElevationGain = 60f;
+    public float baseElevationGain = 40f;
 
     /** 娴峰哺鏀舵暃鍧″锛堝潡/鍗曚綅 c锛夛細base 澧炵泭鎸夊唴闄嗗害 smoothstep 娓愬锛坈=0 澶?0 鈫?c=coastRampWidth 澶勬弧鍊硷級銆?     *  瀹藉潯閬垮厤娴峰哺鎮礀锛堝疄娴?baseN脳澧炵泭鐩存帴鏂藉姞鏃?rawDelta 杈?64锛夛紱0.6 鈫?婊?base 闇€ c>=0.6锛堝唴闄嗭級 */
     public final float coastRampWidth = 0.8f;
@@ -180,48 +180,35 @@ public class TerrainConfig {
     // ---------------- 高原核（M6 高原式：确定性距离场，替代 c/mask 驱动） ----------------
 
     /** 高原中心世界坐标（扫描定位到 w1(-1024,0) 窗口内） */
-    public float plateauCX = -940f;
-    public float plateauCZ = 20f;
+    public float plateauCX = -840f;
+    public float plateauCZ = 30f;
     /** 高原半径（格）：R=80 -> 高原面占 w1 窗口 ~39%（S10 低地 61% 卡线内） */
-    public float plateauRadius = 17f;
+    public float plateauRadius = 28f;
     /** 椭圆山脊长轴（格）：沿走向角拉长——细长链面积小（S10）长度方向连续（S9） */
-    public float plateauLength = 120f;
-    /** 高原边缘过渡宽度（格）：edge=10 -> 陡崖环 ~7.7% 面积（steep30<15%） */
-    public float plateauEdge = 6f;
-    /** 高原顶高度（方块 Y） */
-    public float plateauHeight = 440f;
+    public float plateauLength = 150f;
+        /** 高原顶高度（方块 Y） */
+    public float plateauHeight = 390f;
     /** 高原面起伏幅度（格）：起伏 30 -> 坡度 ~17°（平缓），贡献 distinct */
     public float plateauRelief = 10f;
     /** 核顶高频小起伏（补 S5 distinct，仅核内面积小不破坏 S11） */
     public float kernelDetailAmplitude = 1.5f;
     public float kernelDetailFrequency = 0.03f;
     /** 第二山脊核中心（错开位置，双峰链，贡献更多高度级 S5 distinct） */
-    public float plateauCX2 = -820f;
-    public float plateauCZ2 = 180f;
-    public float plateauRadius2 = 9f;
-    public float plateauLength2 = 100f;
-    public float plateauHeight2 = 330f;
+    public float plateauCX2 = -900f;
+    public float plateauCZ2 = 20f;
+    public float plateauRadius2 = 14f;
+    public float plateauLength2 = 110f;
+    public float plateauHeight2 = 100f;
     /** 高原面起伏噪声频率（低） */
 
-    // ---------------- origin 高峰核（玩家出生点可见高山，M6d 山麓过渡版） ----------------
-
-    /** origin 高峰中心（世界坐标，位于 origin 窗口东缘——窗口内见西侧山麓缓坡与峰肩） */
-    public float peakCX = 290f;
-    public float peakCZ = 60f;
-    /** 高峰基底半径（格）：R=105（含山麓裙边），面积与 M6c 线性壳相当（S10 alpine 预算不变） */
-    public float peakRadius = 105f;
-    /** 高峰基底半径低频摆动幅度（占半径比例）：±10% 让山脚轮廓不规则，融入周边丘陵 */
-    public float peakRadiusWobble = 0.10f;
-    /** 高峰顶高度（方块 Y）：460→320 降高 + cos 穹顶（外缘导数 0），山脚平滑过渡不突兀 */
-    public float peakHeight = 320f;
     public float plateauReliefFrequency = 0.0005f;
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 
     /** 鐑镜铓€浼戞瑙掞紙鏍?鏍硷級锛氱浉閭诲潯搴﹁秴杩囪鍊煎垯鐗╄川鍚戜綆澶勬惉杩愶紙talus 鏉惧紱锛?*/
-    public final float erosionTalus = 8f;
+    public final float erosionTalus = 12f;
 
     /** 鐑镜铓€杩唬娆℃暟锛?= 缂撳瓨杈圭晫 8锛屼繚璇佽法鍧椾竴鑷达級 */
-    public final int erosionIterations = 8;
+    public final int erosionIterations = 4;
 
     /** 姣忓尯鍧楁按婊存暟閲忥紙32脳32 缃戞牸 ~1024 鐐癸級 */
     public final int hydraulicDropsPerChunk = 0;
