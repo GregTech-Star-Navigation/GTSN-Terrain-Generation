@@ -205,10 +205,10 @@ public class TerrainConfig {
     // ---------------- 渚佃殌闆曞埢锛堢儹渚佃殌 + 姘存淮渚佃殌锛孒eightCache 鍖哄潡缂撳瓨锛?----------------
 
     /** 鐑镜铓€浼戞瑙掞紙鏍?鏍硷級锛氱浉閭诲潯搴﹁秴杩囪鍊煎垯鐗╄川鍚戜綆澶勬惉杩愶紙talus 鏉惧紱锛?*/
-    public final float erosionTalus = 12f;
+    public final float erosionTalus = 16f;
 
     /** 鐑镜铓€杩唬娆℃暟锛?= 缂撳瓨杈圭晫 8锛屼繚璇佽法鍧椾竴鑷达級 */
-    public final int erosionIterations = 4;
+    public final int erosionIterations = 2;
 
     /** 姣忓尯鍧楁按婊存暟閲忥紙32脳32 缃戞牸 ~1024 鐐癸級 */
     public final int hydraulicDropsPerChunk = 0;
